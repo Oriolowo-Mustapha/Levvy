@@ -185,6 +185,85 @@ public class AsrAndLlmTests
     }
 
     [Fact]
+    public void Deepgram_utterances_accumulate_chunkStartOffsetMs_and_extract_detected_language()
+    {
+        var dgJson = """
+        {
+          "results": {
+            "channels": [
+              {
+                "detected_language": "es-419",
+                "alternatives": [
+                  {
+                    "transcript": "Hola estudiantes, bienvenidos a la clase."
+                  }
+                ]
+              }
+            ]
+          }
+        }
+        """;
+
+        var segments = DeepgramAsrStreamer.ParseDeepgramResponse(dgJson, chunkStartOffsetMs: 45_000, sourceLanguage: "auto");
+
+        Assert.Single(segments);
+        Assert.Equal(45_000, segments[0].OffsetMs);
+        Assert.Equal("Hola estudiantes, bienvenidos a la clase.", segments[0].Text);
+        Assert.Equal("es", segments[0].SourceLanguage);
+    }
+
+    [Fact]
+    public async Task ResilientAsrStreamer_uses_Deepgram_directly_when_ASR_PROVIDER_is_deepgram()
+    {
+        var groqCalled = false;
+        var groqHandler = new FakeHttpMessageHandler(_ =>
+        {
+            groqCalled = true;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+        });
+
+        string? requestedUri = null;
+        var deepgramHandler = new FakeHttpMessageHandler(req =>
+        {
+            requestedUri = req.RequestUri?.ToString();
+            var dgJson = """
+            {
+              "results": {
+                "utterances": [
+                  { "start": 0.5, "transcript": "Primary caption from Deepgram Nova-2." }
+                ]
+              }
+            }
+            """;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(dgJson, Encoding.UTF8, "application/json")
+            });
+        });
+
+        var cfg = new StubConfiguration(new Dictionary<string, string?>
+        {
+            ["ASR_PROVIDER"] = "deepgram",
+            ["DEEPGRAM_API_KEY"] = "test-dg-key",
+            ["DEEPGRAM_MODEL"] = "nova-2-meeting"
+        });
+
+        var groq = new GroqAsrStreamer(new HttpClient(groqHandler), cfg);
+        var deepgram = new DeepgramAsrStreamer(new HttpClient(deepgramHandler), cfg);
+        var resilient = new ResilientAsrStreamer(groq, deepgram, cfg, NullLogger<ResilientAsrStreamer>.Instance);
+
+        using var audio = new MemoryStream(new byte[] { 1, 2, 3, 4 });
+        var segments = await resilient.TranscribeChunkAsync(audio, chunkStartOffsetMs: 20_000, sourceLanguage: "auto", CancellationToken.None);
+
+        Assert.False(groqCalled);
+        Assert.Contains("model=nova-2-meeting", requestedUri);
+        Assert.Contains("detect_language=true", requestedUri);
+        Assert.Single(segments);
+        Assert.Equal(20_500, segments[0].OffsetMs);
+        Assert.Equal("Primary caption from Deepgram Nova-2.", segments[0].Text);
+    }
+
+    [Fact]
     public void StudyPack_validation_drops_flashcards_without_valid_transcript_receipt()
     {
         var packJson = """

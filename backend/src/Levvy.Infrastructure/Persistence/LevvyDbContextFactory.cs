@@ -1,26 +1,26 @@
+using Levvy.Infrastructure.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
 namespace Levvy.Infrastructure.Persistence;
 
 /// <summary>
-/// Design-time factory so `dotnet ef migrations add` can instantiate the Npgsql-only
-/// LevvyDbContext without booting Levvy.Api. Resolves the connection string the same
-/// way the app does: DATABASE_URL env var first, then a local dev default.
+/// Design-time factory for EF Core Npgsql migrations (used by dotnet ef CLI).
+/// Resolves the connection string from backend/.env or DATABASE_URL, falling back
+/// to the same default the app uses, so no running API instance is required.
 /// </summary>
 public sealed class LevvyDbContextFactory : IDesignTimeDbContextFactory<LevvyDbContext>
 {
     public LevvyDbContext CreateDbContext(string[] args)
     {
+        var env = DotEnvLoader.LoadFromDefaultLocations();
         var connString =
-            Environment.GetEnvironmentVariable("DATABASE_URL")
-            ?? Environment.GetEnvironmentVariable("ConnectionStrings__Levvy")
-            ?? "Host=localhost;Port=5432;Database=levvy;Username=levvy;Password=levvy";
+            (env.TryGetValue("DATABASE_URL", out var url) && !string.IsNullOrWhiteSpace(url) ? url : null)
+            ?? Environment.GetEnvironmentVariable("DATABASE_URL")
+            ?? DependencyInjection.DefaultConnectionString;
 
-        var options = new DbContextOptionsBuilder<LevvyDbContext>()
+        return new LevvyDbContext(new DbContextOptionsBuilder<LevvyDbContext>()
             .UseNpgsql(connString)
-            .Options;
-
-        return new LevvyDbContext(options);
+            .Options);
     }
 }

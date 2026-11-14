@@ -39,11 +39,15 @@ public class DeepgramAsrStreamer : IAsrStreamer
         CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(audioChunk);
+        if (chunkStartOffsetMs < 0)
+            throw new ArgumentOutOfRangeException(nameof(chunkStartOffsetMs), "Chunk start offset cannot be negative.");
+
         var apiKey = _cfg["Deepgram:ApiKey"] ?? _cfg["DEEPGRAM_API_KEY"];
         if (string.IsNullOrWhiteSpace(apiKey))
             throw new InvalidOperationException("DEEPGRAM_API_KEY is not configured.");
 
-        var query = "listen?model=nova-2&smart_format=true&utterances=true";
+        var model = _cfg["Deepgram:Model"] ?? _cfg["DEEPGRAM_MODEL"] ?? "nova-2";
+        var query = $"listen?model={Uri.EscapeDataString(model)}&smart_format=true&utterances=true&punctuate=true";
         if (!string.IsNullOrWhiteSpace(sourceLanguage) &&
             !sourceLanguage.Equals("auto", StringComparison.OrdinalIgnoreCase) &&
             !sourceLanguage.Equals("mixed", StringComparison.OrdinalIgnoreCase))
@@ -89,7 +93,8 @@ public class DeepgramAsrStreamer : IAsrStreamer
             return Array.Empty<TranscriptSegment>();
 
         var now = DateTime.UtcNow;
-        var lang = string.IsNullOrWhiteSpace(sourceLanguage) ? "en" : sourceLanguage;
+        var primaryChannel = payload.Results.Channels?.FirstOrDefault();
+        var lang = ResolveLanguage(sourceLanguage, primaryChannel?.DetectedLanguage);
         var segments = new List<TranscriptSegment>();
 
         if (payload.Results.Utterances is { Count: > 0 })
@@ -114,13 +119,16 @@ public class DeepgramAsrStreamer : IAsrStreamer
             return segments;
         }
 
-        var altTranscript = payload.Results.Channels?.FirstOrDefault()?.Alternatives?.FirstOrDefault()?.Transcript?.Trim();
+        var firstAlternative = primaryChannel?.Alternatives?.FirstOrDefault();
+        var altTranscript = firstAlternative?.Transcript?.Trim();
         if (!string.IsNullOrWhiteSpace(altTranscript))
         {
+            var firstWordStart = firstAlternative?.Words?.FirstOrDefault()?.Start ?? 0.0;
+            var relMs = (long)Math.Round(Math.Max(0, firstWordStart) * 1000.0, MidpointRounding.AwayFromZero);
             segments.Add(new TranscriptSegment
             {
                 Id = Guid.NewGuid(),
-                OffsetMs = chunkStartOffsetMs,
+                OffsetMs = chunkStartOffsetMs + relMs,
                 Text = altTranscript,
                 SourceLanguage = lang,
                 CreatedAtUtc = now
@@ -128,5 +136,29 @@ public class DeepgramAsrStreamer : IAsrStreamer
         }
 
         return segments;
+    }
+
+    private static string ResolveLanguage(string? requestedLanguage, string? detectedLanguage)
+    {
+        if (!string.IsNullOrWhiteSpace(requestedLanguage) &&
+            !requestedLanguage.Equals("auto", StringComparison.OrdinalIgnoreCase) &&
+            !requestedLanguage.Equals("mixed", StringComparison.OrdinalIgnoreCase))
+        {
+            return NormalizeLanguageCode(requestedLanguage);
+        }
+
+        if (!string.IsNullOrWhiteSpace(detectedLanguage))
+            return NormalizeLanguageCode(detectedLanguage);
+
+        return "en";
+    }
+
+    private static string NormalizeLanguageCode(string raw)
+    {
+        var lower = raw.Trim().ToLowerInvariant();
+        if (lower.Contains('-'))
+            lower = lower.Split('-')[0];
+
+        return lower.Length >= 2 ? lower[..2] : "en";
     }
 }
