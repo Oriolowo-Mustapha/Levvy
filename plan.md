@@ -79,3 +79,7 @@ Enable Levvy to **join live Google Meet (and Zoom/Teams) online classes**, recor
 2. [x] Configure `levvy.tech` DNS, Nginx reverse proxy (`/`, `/api/`, `/health`, `/sessions`, `/jobs`, `/ws/`, `/swagger`, `/openapi/`), Let's Encrypt HTTPS/WSS, and GitHub Actions CD (`deploy-vultr.yml`).
 3. [ ] Update Nginx regex to include `auth|users|swagger|openapi` (`location ~ ^/(health|auth|users|sessions|jobs|swagger|openapi)`), verify `/swagger`, and deploy Auth + Dashboard migration.
 4. [ ] Rehearse 5-minute demo twice: Deaf POV → International POV → Google Meet live captions → Ask Levvy + audio receipt → Study pack.
+
+## Frontend implementation checkpoint — 14 November 2026
+
+The screenshot-led entry, authentication, dashboard, host, viewer and study-pack routes are implemented and locally checked. See progresstracker.md and IMPLEMENTATION-REPORT.md for tested behavior. Earlier Phase 3 entries also contain demo seeding and meeting-bot URL controls, so those composite entries are not blanket-marked complete. The production backend returned 502; the real-service rehearsal remains open.

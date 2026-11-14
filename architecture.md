@@ -100,3 +100,11 @@ Next.js (App Router) + TypeScript + Tailwind CSS inside `frontend/src/`:
 - **Vultr Compute:** Hosts `Levvy.Api` (and serves/reverse-proxies `frontend/` behind HTTPS/WSS so REST and WebSockets share one origin).
 - **Vultr Managed PostgreSQL:** Activated via `Database:Provider=postgres` + `ConnectionStrings:Levvy`.
 - **Vultr Object Storage (S3-compatible):** Stores raw session audio + generated study packs via `IAudioStore`.
+
+## Browser host integration (14 November 2026)
+
+The UI shares typed DTOs in frontend/src/lib/api.ts, centralized authenticated requests in lib/client.ts, live socket ownership in lib/use-lecture.ts and media resources in lib/use-recorder.ts. Provider keys stay server-side.
+
+POST /sessions/{sessionId}/ws-ticket requires a valid owner Bearer token and a live session. Its cryptographically random ticket expires in 30 seconds, is consumed once, and authorizes only that session's WebSocket host upgrade. Existing HostAccess rules remain for other clients; unauthorized requested host upgrades now return 403 instead of silently downgrading. A ticket store is process-local, so multi-instance deployments need connection affinity or a shared ticket store.
+
+Recording uploads now use the same server-side HostAccess check as ending a lecture. Host sockets receive additive asr_status frames with processing, ready and error states. Caption frames include sourceLanguage when known. The frontend drains acknowledged ASR work before ending, while transcription persistence and pack generation remain the existing asynchronous Hangfire pipeline. This is not a guarantee that all background jobs have committed before pack generation.

@@ -261,6 +261,10 @@ public static class SessionEndpoints
     private static async Task<IResult> UploadAudio(
         Guid id,
         HttpRequest request,
+        HttpContext http,
+        IJwtTokenGenerator jwt,
+        IUserRepository users,
+        IConfiguration config,
         ISessionRepository repo,
         IAudioStore audioStore,
         CancellationToken ct)
@@ -268,6 +272,9 @@ public static class SessionEndpoints
         var session = await repo.GetWithTranscriptAsync(id, ct);
         if (session is null)
             return Results.NotFound(new { error = "Session not found." });
+
+        if (!await HostAccess.IsHostAuthorizedAsync(http, session, jwt, users, config, ct))
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
 
         var key = await audioStore.SaveRecordingAsync(id, request.Body, ct);
         session.RecordingKey = key;

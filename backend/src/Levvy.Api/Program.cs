@@ -86,6 +86,8 @@ builder.Services.AddRateLimiter(opt =>
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<LectureSessionHub>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<Levvy.Infrastructure.Authentication.WebSocketTicketStore>();
 builder.Services.AddOpenApi();
 
 var app = builder.Build();

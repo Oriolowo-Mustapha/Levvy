@@ -1,6 +1,7 @@
 using Levvy.Api.Hubs;
 using Levvy.Application.Common.Interfaces;
 using Microsoft.Extensions.Configuration;
+using Levvy.Infrastructure.Authentication;
 
 namespace Levvy.Api.Endpoints;
 
@@ -8,6 +9,19 @@ public static class WebSocketEndpoints
 {
     public static IEndpointRouteBuilder MapWebSocketEndpoints(this IEndpointRouteBuilder routes)
     {
+        routes.MapPost("/sessions/{sessionId:guid}/ws-ticket", async (
+            HttpContext context, Guid sessionId, ISessionRepository repo,
+            IJwtTokenGenerator jwt, WebSocketTicketStore tickets, CancellationToken ct) =>
+        {
+            var userId = HttpUserResolver.TryResolveFromBearer(context, jwt);
+            if (userId is null) return Results.Unauthorized();
+            var session = await repo.GetWithTranscriptAsync(sessionId, ct);
+            if (session is null) return Results.NotFound();
+            if (session.HostId != userId) return Results.StatusCode(403);
+            if (session.EndedAtUtc is not null) return Results.Conflict(new { error = "This lecture has ended." });
+            return Results.Ok(new { ticket = tickets.Issue(sessionId), expiresInSeconds = 30 });
+        });
+
         routes.Map("/ws/{sessionId:guid}", async (
             HttpContext context,
             Guid sessionId,
@@ -16,6 +30,7 @@ public static class WebSocketEndpoints
             IJwtTokenGenerator jwt,
             IUserRepository users,
             IConfiguration cfg,
+            WebSocketTicketStore tickets,
             CancellationToken ct) =>
         {
             if (!context.WebSockets.IsWebSocketRequest)
@@ -32,9 +47,13 @@ public static class WebSocketEndpoints
                 if (session is null)
                     return Results.NotFound(new { error = "Session not found." });
 
-                effectiveRole = await HostAccess.IsHostAuthorizedAsync(context, session, jwt, users, cfg, ct)
-                    ? "host"
-                    : "viewer";
+                var ticket = context.Request.Query["ticket"].ToString();
+                var authorized = !string.IsNullOrEmpty(ticket)
+                    ? tickets.Consume(ticket, sessionId)
+                    : await HostAccess.IsHostAuthorizedAsync(context, session, jwt, users, cfg, ct);
+                if (!authorized) return Results.StatusCode(403);
+                if (session.EndedAtUtc is not null) return Results.Conflict();
+                effectiveRole = "host";
             }
 
             using var socket = await context.WebSockets.AcceptWebSocketAsync();
