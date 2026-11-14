@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text;
 using FluentValidation;
 using Levvy.Application;
 using Levvy.Application.Commands;
@@ -6,7 +8,9 @@ using Levvy.Application.Common.Interfaces;
 using Levvy.Application.Events;
 using Levvy.Domain.Entities;
 using Levvy.Infrastructure.BackgroundJobs;
+using Levvy.Infrastructure.Meetings;
 using MediatR;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -251,6 +255,162 @@ public class OnlineClassTests
         // Unknown event types are ignored, not fatal
         var result = await mediator.Send(new IngestMeetingWebhookCommand(created.SessionId, "event", "something_new", null, null, null, null));
         Assert.Equal("ignored", result.Status);
+    }
+
+    [Fact]
+    public async Task Webhook_MeetingBaasV2_event_names_mark_active_and_completed_ended()
+    {
+        var (mediator, repo, scheduler, _) = BuildMediator();
+        var created = await mediator.Send(new ConnectOnlineClassCommand(Guid.NewGuid(), "Bio 101", "https://meet.google.com/abc-defg-hij"));
+
+        var activeResult = await mediator.Send(new IngestMeetingWebhookCommand(
+            created.SessionId, "event", "in_call_recording", null, null, null, "mb-bot-42"));
+        Assert.Equal("ok", activeResult.Status);
+
+        var session = await repo.GetWithTranscriptAsync(created.SessionId, CancellationToken.None);
+        Assert.Equal("active", session!.BotStatus);
+        Assert.Equal("mb-bot-42", session.ExternalBotId);
+
+        await mediator.Send(new IngestMeetingWebhookCommand(
+            created.SessionId, "caption", null, 15_000, "Elasticity measures responsiveness.", "en", "mb-bot-42"));
+
+        var completedResult = await mediator.Send(new IngestMeetingWebhookCommand(
+            created.SessionId, "event", "bot.completed", null, null, null, "mb-bot-42"));
+        Assert.Equal("ended", completedResult.Status);
+        Assert.Equal("ended", session.BotStatus);
+        Assert.NotNull(session.EndedAtUtc);
+        Assert.Contains(created.SessionId, scheduler.StudyPackSessionIds);
+    }
+
+    [Fact]
+    public async Task GoogleMeetBotConnector_MeetingBaasV2_dispatches_and_polls_status()
+    {
+        var handler = new StubHttpHandler(
+            (HttpStatusCode.Created, """{"success":true,"data":{"bot_id":"mb-bot-42","status":"created"}}"""),
+            (HttpStatusCode.OK, """{"success":true,"data":{"status":"in_call_recording"}}"""),
+            (HttpStatusCode.OK, """{"success":true,"data":{"status":"call_ended"}}"""));
+
+        var connector = BuildConnector(handler, new()
+        {
+            ["MeetingBot:ApiKey"] = "mb-test-key",
+            ["MeetingBot:ApiBaseUrl"] = "https://api.meetingbaas.com/v2" // without trailing slash
+        });
+
+        var sessionId = Guid.NewGuid();
+        var dispatch = await connector.DispatchBotAsync(sessionId, "https://meet.google.com/abc-defg-hij", "Levvy Note-Taker", CancellationToken.None);
+        Assert.Equal("mb-bot-42", dispatch.ExternalBotId);
+        Assert.Equal("joining", dispatch.Status);
+
+        var active = await connector.GetBotStatusAsync(sessionId, "mb-bot-42", CancellationToken.None);
+        Assert.Equal("active", active.Status);
+        Assert.True(active.IsActive);
+
+        var ended = await connector.GetBotStatusAsync(sessionId, "mb-bot-42", CancellationToken.None);
+        Assert.Equal("ended", ended.Status);
+        Assert.False(ended.IsActive);
+
+        Assert.Equal(3, handler.Requests.Count);
+        Assert.Equal("https://api.meetingbaas.com/v2/bots", handler.Requests[0].Uri);
+        Assert.Equal("mb-test-key", handler.Requests[0].ApiKeyHeader);
+        Assert.Null(handler.Requests[0].AuthorizationHeader);
+        Assert.Contains("\"extra\"", handler.Requests[0].Body);
+        Assert.Equal("https://api.meetingbaas.com/v2/bots/mb-bot-42/status", handler.Requests[1].Uri);
+    }
+
+    [Fact]
+    public async Task GoogleMeetBotConnector_RecallAi_uses_bearer_and_v1_routes()
+    {
+        var handler = new StubHttpHandler(
+            (HttpStatusCode.Created, """{"id":"recall-99"}"""),
+            (HttpStatusCode.OK, """{"status":{"code":"in_call"}}"""));
+
+        var connector = BuildConnector(handler, new()
+        {
+            ["MeetingBot:ApiKey"] = "recall-key",
+            ["MeetingBot:ApiBaseUrl"] = "https://api.recall.ai/api/v1/"
+        });
+
+        var sessionId = Guid.NewGuid();
+        var dispatch = await connector.DispatchBotAsync(sessionId, "https://meet.google.com/abc-defg-hij", "Levvy Note-Taker", CancellationToken.None);
+        Assert.Equal("recall-99", dispatch.ExternalBotId);
+        Assert.Equal("joining", dispatch.Status);
+
+        var status = await connector.GetBotStatusAsync(sessionId, "recall-99", CancellationToken.None);
+        Assert.Equal("active", status.Status);
+        Assert.True(status.IsActive);
+
+        Assert.Equal("https://api.recall.ai/api/v1/bot", handler.Requests[0].Uri);
+        Assert.Equal("Bearer recall-key", handler.Requests[0].AuthorizationHeader);
+        Assert.Null(handler.Requests[0].ApiKeyHeader);
+        Assert.Contains("\"metadata\"", handler.Requests[0].Body);
+        Assert.Equal("https://api.recall.ai/api/v1/bot/recall-99", handler.Requests[1].Uri);
+    }
+
+    [Fact]
+    public async Task GoogleMeetBotConnector_GetBotStatus_handles_non_success_http_gracefully()
+    {
+        var handler = new StubHttpHandler((HttpStatusCode.InternalServerError, "upstream error"));
+        var connector = BuildConnector(handler, new()
+        {
+            ["MeetingBot:ApiKey"] = "mb-test-key"
+        });
+
+        var status = await connector.GetBotStatusAsync(Guid.NewGuid(), "mb-bot-42", CancellationToken.None);
+        Assert.Equal("joining", status.Status);
+        Assert.False(status.IsActive);
+    }
+
+    private static GoogleMeetBotConnector BuildConnector(StubHttpHandler handler, Dictionary<string, string?> settings)
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+        return new GoogleMeetBotConnector(
+            new StubHttpClientFactory(handler),
+            config,
+            NullLogger<GoogleMeetBotConnector>.Instance);
+    }
+
+    private sealed class StubHttpClientFactory(HttpMessageHandler handler) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
+    }
+
+    private sealed class StubHttpHandler(params (HttpStatusCode Code, string Body)[] responses) : HttpMessageHandler
+    {
+        private readonly Queue<(HttpStatusCode Code, string Body)> _responses = new(responses);
+        public List<RecordedRequest> Requests { get; } = new();
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = request.Content is not null
+                ? await request.Content.ReadAsStringAsync(cancellationToken)
+                : null;
+            var apiKeyHeader = request.Headers.TryGetValues("x-meeting-baas-api-key", out var values)
+                ? values.FirstOrDefault()
+                : null;
+
+            Requests.Add(new RecordedRequest(
+                request.Method.Method,
+                request.RequestUri?.ToString() ?? string.Empty,
+                request.Headers.Authorization?.ToString(),
+                apiKeyHeader,
+                body));
+
+            var (code, respBody) = _responses.Count > 0
+                ? _responses.Dequeue()
+                : (HttpStatusCode.OK, "{}");
+
+            return new HttpResponseMessage(code)
+            {
+                Content = new StringContent(respBody, Encoding.UTF8, "application/json")
+            };
+        }
+
+        public sealed record RecordedRequest(
+            string Method,
+            string Uri,
+            string? AuthorizationHeader,
+            string? ApiKeyHeader,
+            string? Body);
     }
 
     [Fact]

@@ -30,6 +30,7 @@ public static class SessionEndpoints
 
         group.MapPost("/online-class", ConnectOnlineClass).WithSummary("Create a session bound to an online class (Meet/Zoom/Teams) and dispatch the Levvy Note-Taker bot");
         group.MapPost("/{id:guid}/connect-meet", ConnectMeet).WithSummary("Attach a Google Meet / Zoom / Teams URL to an existing session and dispatch the bot");
+        group.MapPost("/meet-webhook", MeetWebhookRoot).WithSummary("Account-level Meeting BaaS webhook endpoint (resolves session from payload extra.session_id or acknowledges test pings)");
         group.MapPost("/{id:guid}/meet-webhook", MeetWebhook).WithSummary("Ingest meeting-bot lifecycle events and live captions (call_ended triggers study pack generation)");
 
         return group;
@@ -87,7 +88,7 @@ public static class SessionEndpoints
         }
     }
 
-    private static async Task<IResult> MeetWebhook(
+    private static Task<IResult> MeetWebhook(
         Guid id,
         MeetWebhookRequest req,
         HttpRequest http,
@@ -95,18 +96,53 @@ public static class SessionEndpoints
         ISender sender,
         CancellationToken ct)
     {
-        // Shared-secret check when MEETING_BOT_WEBHOOK_SECRET is configured.
-        var expectedSecret = config["MeetingBot:WebhookSecret"];
-        if (!string.IsNullOrEmpty(expectedSecret) &&
-            !string.Equals(http.Headers["X-Meeting-Webhook-Secret"], expectedSecret, StringComparison.Ordinal))
-        {
-            return Results.Unauthorized();
-        }
+        if (!IsWebhookAuthorized(http, config))
+            return Task.FromResult(Results.Unauthorized());
 
+        return DispatchWebhookCommandAsync(id, req, sender, ct);
+    }
+
+    private static Task<IResult> MeetWebhookRoot(
+        MeetWebhookRequest req,
+        HttpRequest http,
+        IConfiguration config,
+        ISender sender,
+        CancellationToken ct)
+    {
+        if (!IsWebhookAuthorized(http, config))
+            return Task.FromResult(Results.Unauthorized());
+
+        var sessionId = ResolveWebhookSessionId(req);
+        if (sessionId is null)
+            return Task.FromResult(Results.Ok(new { status = "webhook_verified" }));
+
+        return DispatchWebhookCommandAsync(sessionId.Value, req, sender, ct);
+    }
+
+    private static bool IsWebhookAuthorized(HttpRequest http, IConfiguration config)
+    {
+        // Shared-secret check when MEETING_BOT_WEBHOOK_SECRET is configured (supports Meeting BaaS & Levvy headers).
+        var expectedSecret = config["MeetingBot:WebhookSecret"] ?? config["MEETING_BOT_WEBHOOK_SECRET"];
+        if (string.IsNullOrEmpty(expectedSecret))
+            return true;
+
+        var providedSecret = http.Headers["X-Meeting-Webhook-Secret"].FirstOrDefault()
+            ?? http.Headers["x-meeting-baas-api-key"].FirstOrDefault()
+            ?? http.Headers["x-mb-secret"].FirstOrDefault();
+        return string.Equals(providedSecret, expectedSecret, StringComparison.Ordinal);
+    }
+
+    private static async Task<IResult> DispatchWebhookCommandAsync(
+        Guid sessionId,
+        MeetWebhookRequest req,
+        ISender sender,
+        CancellationToken ct)
+    {
         try
         {
+            var (type, eventName, botId) = NormalizeMeetWebhook(req);
             var result = await sender.Send(
-                new IngestMeetingWebhookCommand(id, req.Type, req.Event, req.OffsetMs, req.Text, req.Language, req.BotId),
+                new IngestMeetingWebhookCommand(sessionId, type, eventName, req.OffsetMs, req.Text, req.Language, botId),
                 ct);
             return Results.Ok(result);
         }
@@ -118,6 +154,84 @@ public static class SessionEndpoints
         {
             return Results.BadRequest(new { error = ex.Message });
         }
+    }
+
+    private static Guid? ResolveWebhookSessionId(MeetWebhookRequest req)
+    {
+        if (req.SessionId is { } explicitId && explicitId != Guid.Empty)
+            return explicitId;
+
+        if (req.Data is not { ValueKind: System.Text.Json.JsonValueKind.Object } dataEl)
+            return null;
+
+        if (TryGetJsonGuid(dataEl, "extra", "session_id") is { } extraId)
+            return extraId;
+
+        if (TryGetJsonGuid(dataEl, "metadata", "session_id") is { } metadataId)
+            return metadataId;
+
+        return TryGetJsonGuid(dataEl, "session_id");
+    }
+
+    private static Guid? TryGetJsonGuid(System.Text.Json.JsonElement obj, string propertyName)
+    {
+        var raw = TryGetJsonString(obj, propertyName);
+        return Guid.TryParse(raw, out var parsed) && parsed != Guid.Empty ? parsed : null;
+    }
+
+    private static Guid? TryGetJsonGuid(System.Text.Json.JsonElement obj, string nestedObjectProperty, string propertyName)
+    {
+        if (!obj.TryGetProperty(nestedObjectProperty, out var nestedEl) ||
+            nestedEl.ValueKind != System.Text.Json.JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return TryGetJsonGuid(nestedEl, propertyName);
+    }
+
+    private static (string Type, string? Event, string? BotId) NormalizeMeetWebhook(MeetWebhookRequest req)
+    {
+        var type = string.IsNullOrWhiteSpace(req.Type) && !string.IsNullOrWhiteSpace(req.Event)
+            ? "event"
+            : (req.Type ?? string.Empty);
+
+        var botId = req.BotId;
+        var eventName = req.Event;
+
+        if (req.Data is { ValueKind: System.Text.Json.JsonValueKind.Object } dataEl)
+        {
+            if (string.IsNullOrWhiteSpace(botId))
+            {
+                botId = TryGetJsonString(dataEl, "bot_id") ?? TryGetJsonString(dataEl, "id");
+            }
+
+            if (dataEl.TryGetProperty("status", out var statusEl))
+            {
+                string? nestedStatus = statusEl.ValueKind switch
+                {
+                    System.Text.Json.JsonValueKind.String => statusEl.GetString(),
+                    System.Text.Json.JsonValueKind.Object => TryGetJsonString(statusEl, "code"),
+                    _ => null
+                };
+
+                if (!string.IsNullOrWhiteSpace(nestedStatus))
+                {
+                    eventName = nestedStatus;
+                }
+            }
+        }
+
+        return (type, eventName, botId);
+    }
+
+    private static string? TryGetJsonString(System.Text.Json.JsonElement obj, string propertyName)
+    {
+        if (!obj.TryGetProperty(propertyName, out var el) || el.ValueKind != System.Text.Json.JsonValueKind.String)
+            return null;
+
+        var value = el.GetString();
+        return string.IsNullOrWhiteSpace(value) ? null : value;
     }
 
     private static async Task<IResult> CreateSession(

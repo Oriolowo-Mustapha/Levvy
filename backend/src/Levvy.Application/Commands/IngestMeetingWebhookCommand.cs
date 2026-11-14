@@ -45,6 +45,8 @@ public sealed class IngestMeetingWebhookCommandHandler(
         var session = await repo.GetWithTranscriptAsync(request.SessionId, ct)
             ?? throw new KeyNotFoundException($"Session '{request.SessionId}' was not found.");
 
+        var normalizedEvent = request.Event?.Trim().ToLowerInvariant();
+
         switch (request.Type)
         {
             case "caption":
@@ -63,18 +65,21 @@ public sealed class IngestMeetingWebhookCommandHandler(
                     request.Language ?? "en"), ct);
                 return new IngestMeetingWebhookResult("caption_accepted");
 
-            case "event" when request.Event == "bot_active":
+            case "event" when normalizedEvent is "bot_active" or "in_call" or "in_call_recording"
+                or "in_call_not_recording" or "bot.in_call_recording":
                 session.BotStatus = "active";
                 session.ExternalBotId ??= request.BotId;
                 await repo.SaveChangesAsync(ct);
                 return new IngestMeetingWebhookResult("ok");
 
-            case "event" when request.Event is "bot_failed" or "fatal":
+            case "event" when normalizedEvent is "bot_failed" or "fatal" or "failed"
+                or "bot.failed" or "recording_permission_denied":
                 session.BotStatus = "failed";
                 await repo.SaveChangesAsync(ct);
                 return new IngestMeetingWebhookResult("ok");
 
-            case "event" when request.Event == "call_ended":
+            case "event" when normalizedEvent is "call_ended" or "completed" or "done"
+                or "bot.completed" or "complete":
                 session.BotStatus = "ended";
                 await repo.SaveChangesAsync(ct);
                 // Ends the session -> SessionEnded -> Hangfire StudyPackGenerationJob (cited notes)

@@ -53,14 +53,14 @@ One vendor, two jobs. OpenAI-compatible REST endpoint, so one `HttpClient` (name
 
 ---
 
-## 3. Meeting-Bot Provider (Recall.ai-compatible, Mode A)
+## 3. Meeting-Bot Provider (Meeting BaaS v2 / Recall.ai, Mode A)
 
 | | |
 |---|---|
 | Use | Joins Google Meet/Zoom/Teams links as the "Levvy Note-Taker" bot: captures audio + live captions and posts them back via webhook into the same `CaptionFinalized` seam as the browser-tab hot pipe. |
-| Code entry point | `Levvy.Infrastructure/MeetingBots/GoogleMeetBotConnector.cs` → `IMeetingBotConnector`; lifecycle jobs in `OnlineClassBotJob.cs` (dispatch → monitor ≤40 polls × 30s); webhook validation via `MeetingBot:WebhookSecret` |
+| Code entry point | `Levvy.Infrastructure/Meetings/GoogleMeetBotConnector.cs` → `IMeetingBotConnector`; defaults to **Meeting BaaS API v2** (`https://api.meetingbaas.com/v2/`, `x-meeting-baas-api-key` header) and automatically switches to Recall.ai v1 schema (`Authorization: Bearer`) when `MEETING_BOT_API_BASE_URL` contains `recall.ai`. Lifecycle jobs in `OnlineClassBotJob.cs` (dispatch → monitor ≤40 polls × 30s); webhook validation via `MeetingBot:WebhookSecret`. |
 | URL parsing | `Levvy.Application/Common/MeetingUrlParser.cs` — host-aware; only `meet.google.com`, `zoom.us`, `teams.microsoft.com` / `teams.live.com` (or their subdomains) are accepted |
-| Secret | `MeetingBot:ApiKey` (env `MEETING_BOT_API_KEY`), `MeetingBot:ApiBaseUrl`, `MeetingBot:WebhookSecret` |
+| Secret | `MeetingBot:ApiKey` (env `MEETING_BOT_API_KEY`), `MeetingBot:ApiBaseUrl` (env `MEETING_BOT_API_BASE_URL`, default `https://api.meetingbaas.com/v2/`), `MeetingBot:WebhookSecret` |
 | Status | **Live.** Leave the API key empty to run Mode B (browser tab audio over `/ws/{sessionId}`); `/sessions/{id}/connect-meet` then reports `unconfigured` and the session stays Mode B. |
 
 ---

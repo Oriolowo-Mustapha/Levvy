@@ -5,4 +5,12 @@ public sealed record JoinSessionRequest(string? DisplayName, string? PreferredLa
 public sealed record AskQuestionRequest(string Text, Guid? AskerId);
 public sealed record ConnectOnlineClassRequest(string Title, string MeetingUrl, Guid? HostId = null);
 public sealed record ConnectMeetRequest(string MeetingUrl);
-public sealed record MeetWebhookRequest(string Type, string? Event, long? OffsetMs, string? Text, string? Language, string? BotId);
+public sealed record MeetWebhookRequest(
+    string? Type,
+    string? Event,
+    long? OffsetMs,
+    string? Text,
+    string? Language,
+    string? BotId,
+    System.Text.Json.JsonElement? Data = null,
+    Guid? SessionId = null);
