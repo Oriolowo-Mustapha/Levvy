@@ -29,7 +29,10 @@ public static class DotEnvLoader
         ["JWT_AUDIENCE"] = "Jwt__Audience",
         ["JWT_EXPIRY_MINUTES"] = "Jwt__ExpiryMinutes",
         ["GOOGLE_CLIENT_ID"] = "Google__ClientId",
-        ["GOOGLE_CLIENT_SECRET"] = "Google__ClientSecret"
+        ["GOOGLE_CLIENT_SECRET"] = "Google__ClientSecret",
+        ["MEETING_BOT_API_KEY"] = "MeetingBot__ApiKey",
+        ["MEETING_BOT_API_BASE_URL"] = "MeetingBot__ApiBaseUrl",
+        ["MEETING_BOT_WEBHOOK_SECRET"] = "MeetingBot__WebhookSecret"
     };
 
     public static IReadOnlyDictionary<string, string> LoadFromDefaultLocations(string? startDirectory = null)

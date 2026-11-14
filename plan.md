@@ -46,7 +46,7 @@ Git repository initialized at `c:\Users\ADMIN\source\repos\Levvy`, pushed to `or
 
 ---
 
-## Phase 2 — Google Meet & Online Class Integration (Assigned to Adeyemi Mubarak — Backend Dev B) 🚧
+## Phase 2 — Google Meet & Online Class Integration (Assigned to Adeyemi Mubarak — Backend Dev B) ✅
 
 Enable Levvy to **join live Google Meet (and Zoom/Teams) online classes**, record the class audio, transcribe & translate live for **Deaf, hard-of-hearing, and international students**, answer grounded private questions mid-class, and generate cited study notes afterward.
 
@@ -55,11 +55,11 @@ Enable Levvy to **join live Google Meet (and Zoom/Teams) online classes**, recor
   - **Mode A — Bot Joins Google Meet (`IMeetingBotConnector` + Hangfire `OnlineClassBotJob`):** User pastes `meet.google.com/xxx-yyyy-zzz` -> Levvy spawns a meeting bot (`Recall.ai` / `MeetingBaas` via `MEETING_BOT_API_KEY` or headless Chromium + FFmpeg worker) that joins as **"Levvy Note-Taker"**, streams audio into `IAsrStreamer` + `IAudioStore`, fans out live captions/translations over `LectureSessionHub`, and triggers `StudyPackGenerationJob` on call end.
   - **Mode B — Zero-Bot Browser Tab Audio Fallback:** Host/student watching Google Meet in Chrome/Edge shares tab audio (`getDisplayMedia`) straight into `/ws/{sessionId}` when hosts restrict external bots.
 - **Tasks for Mubarak:**
-  1. [ ] Extend `Session` entity (`MeetingPlatform`, `ExternalMeetingUrl`, `BotStatus`, `ExternalBotId`) and run `Add-Migration` + `Update-Database`.
-  2. [ ] Define `IMeetingBotConnector` in `Levvy.Application/Common/Interfaces/` and implement `GoogleMeetBotConnector` in `Levvy.Infrastructure/Meetings/`.
-  3. [ ] Implement `ConnectOnlineClassCommand` (+ FluentValidation URL check for `meet.google.com`, `zoom.us`, `teams.microsoft.com`) and Hangfire `OnlineClassBotJob` to dispatch/monitor the bot.
-  4. [ ] Add `POST /sessions/online-class`, `POST /sessions/{id:guid}/connect-meet`, and `POST /sessions/{id:guid}/meet-webhook` (to ingest live bot transcript/audio & lifecycle events and trigger `EndSessionCommand` -> `StudyPackGenerationJob` when the call ends).
-  5. [ ] Add integration/unit tests covering Google Meet URL validation, bot lifecycle transitions, webhook caption persistence, and auto-generated study packs.
+  1. [x] Extend `Session` entity (`MeetingPlatform`, `ExternalMeetingUrl`, `BotStatus`, `ExternalBotId`) and run `Add-Migration` + `Update-Database`. *(Migration `20261114052538_AddOnlineClassFields` — apply with `Update-Database` on deploy)*
+  2. [x] Define `IMeetingBotConnector` in `Levvy.Application/Common/Interfaces/` and implement `GoogleMeetBotConnector` in `Levvy.Infrastructure/Meetings/`. *(Recall.ai-style REST: POST/GET/DELETE `/bot`; unconfigured key → `"unconfigured"` → Mode B fallback)*
+  3. [x] Implement `ConnectOnlineClassCommand` (+ FluentValidation URL check for `meet.google.com`, `zoom.us`, `teams.microsoft.com`) and Hangfire `OnlineClassBotJob` to dispatch/monitor the bot. *(Dispatch job + 30s `Schedule` monitor loop via `IBackgroundJobScheduler`; `MeetingUrlParser`, shared `SessionCodeGenerator`)*
+  4. [x] Add `POST /sessions/online-class`, `POST /sessions/{id:guid}/connect-meet`, and `POST /sessions/{id:guid}/meet-webhook` (to ingest live bot transcript/audio & lifecycle events and trigger `EndSessionCommand` -> `StudyPackGenerationJob` when the call ends). *(Webhook publishes `CaptionFinalized` — same seam as the hot pipe; `X-Meeting-Webhook-Secret` check when `MEETING_BOT_WEBHOOK_SECRET` is set)*
+  5. [x] Add integration/unit tests covering Google Meet URL validation, bot lifecycle transitions, webhook caption persistence, and auto-generated study packs. *(22 tests in `OnlineClassTests`; suite 43/43 green)*
 
 ---
 

@@ -13,8 +13,8 @@
 | Monorepo & Tooling | 🟢 Done | `backend/` (.NET 10 Clean Arch) + `frontend/` (Next.js standalone) + GitHub Actions CD (`deploy-vultr.yml`) |
 | Backend Domain & Contracts | 🟢 Done | Entities (`User`, `Session`, etc.), Result pattern, MediatR CQRS, FluentValidation, Domain Events |
 | Backend Auth & Dashboard | 🟢 Done | Email/password + Google Sign-In/Sign-Up (`POST /auth/google`), JWT, User Profile & Dashboard (`GET /users/me/dashboard`) |
-| Backend Core & AI | 🟢 Done | Groq LLM/ASR, Deepgram AI (`nova-2`, auto-lang, `ASR_PROVIDER`), S3 AudioStore, Hangfire, Npgsql Migrations, OpenAPI/Swagger (`/swagger`) |
-| Google Meet & Online Class Bot | 🟡 Planned (Mubarak - Dev B) | Assigned to Adeyemi Mubarak in `plan.md` Phase 2 (`OnlineClassBotJob`, `GoogleMeetBotConnector`, webhooks) |
+| Backend Core & AI | 🟢 Done | Groq LLM/ASR, Deepgram AI (`nova-2`, auto-lang, `ASR_PROVIDER`), S3 AudioStore (signed PUT upload + signed GET read fallback for receipts), Hangfire, Npgsql Migrations, OpenAPI/Swagger (`/swagger`) |
+| Google Meet & Online Class Bot | 🟢 Done | **Mubarak (Dev B)** — `IMeetingBotConnector` + `GoogleMeetBotConnector` (Recall.ai-style), `OnlineClassBotJob` dispatch/monitor, `POST /sessions/online-class` · `/connect-meet` · `/meet-webhook`, `CaptionFinalized` webhook seam, migration `AddOnlineClassFields`; Mode B tab-audio fallback stays the zero-key option |
 | Frontend Foundation (`api.ts`) | 🟢 Done | Typed Auth, Dashboard, Session REST + WebSocket client (`frontend/src/lib/api.ts`), design tokens (`globals.css`), `output: "standalone"` |
 | Frontend Pages | 🟡 In Progress (Frontend Dev) | Auth, User Dashboard, Landing/Join, Host Console, Viewer Workspace, Study Pack UI pages |
 | Vultr Infrastructure | 🟢 Provisioned | Compute (`64.177.55.161`), Managed Postgres, Object Storage (`levvy-recordings`), `levvy.tech` HTTPS/WSS |
@@ -51,11 +51,12 @@
 - [x] Hangfire background jobs (`CaptionPersistenceJob`, `StudyPackGenerationJob` with 3 retries, `StaleSessionCleanupJob`, `RecurringJobRegistrationService`) + `/jobs` dashboard
 - [x] Minimal API REST endpoints (`/health`, `/sessions`, `/sessions/demo`, `/join`, `/ask`, `/transcript`, `/end`, `/pack`, `/audio`) with OpenAPI summaries
 - [x] End-to-end CQRS + Hangfire worker + EF persistence tests (`PipelineTests`, `SessionRepositoryTests`)
-- [ ] **Google Meet & Online Class Bot Integration (`plan.md` Phase 2):**
-  - [ ] Add `MeetingPlatform`, `ExternalMeetingUrl`, `BotStatus`, `ExternalBotId` to `Session` + EF Core migration
-  - [ ] Implement `IMeetingBotConnector` / `GoogleMeetBotConnector` + Hangfire `OnlineClassBotJob`
-  - [ ] Add `ConnectOnlineClassCommand`, `POST /sessions/online-class`, `POST /sessions/{id:guid}/connect-meet`, & `POST /sessions/{id:guid}/meet-webhook`
-  - [ ] Wire live bot audio/transcript ingestion into `LectureSessionHub`, `VultrAudioStore`, & `StudyPackGenerationJob`
+- [x] **Google Meet & Online Class Bot Integration (`plan.md` Phase 2):**
+  - [x] Add `MeetingPlatform`, `ExternalMeetingUrl`, `BotStatus`, `ExternalBotId` to `Session` + EF Core migration (`20261114052538_AddOnlineClassFields`)
+  - [x] Implement `IMeetingBotConnector` / `GoogleMeetBotConnector` (Recall.ai-style, `MEETING_BOT_API_KEY`) + Hangfire `OnlineClassBotJob` (dispatch + 30s monitor loop)
+  - [x] Add `ConnectOnlineClassCommand`, `POST /sessions/online-class`, `POST /sessions/{id:guid}/connect-meet`, & `POST /sessions/{id:guid}/meet-webhook` (`CaptionFinalized` seam + `call_ended` → `EndSessionCommand` → study pack)
+  - [x] Wire live bot transcript ingestion into the `CaptionFinalized` seam (persist via `CaptionPersistenceJob`, fan out via `LectureSessionHub`, study pack on call end); audio recording upload path unchanged (`/sessions/{id}/audio`)
+  - [x] 22 new tests in `OnlineClassTests` (URL validation, bot lifecycle, webhook captions, study pack trigger) — suite 43/43
 
 ---
 
@@ -78,7 +79,7 @@
 
 - [x] Git repo initialized & pushed to GitHub (`main`) with automated Vultr CD workflow
 - [x] Vultr Object Storage bucket (`levvy-recordings`) + keys configured
-- [x] Vultr Managed Postgres provisioned + connection string set
+- [x] Vultr Managed Postgres provisioned + connection string set (`DATABASE_URL`; app is Npgsql-only)
 - [x] Vultr Compute deployed (`64.177.55.161`) with `levvy.tech` Let's Encrypt HTTPS + WSS
 - [ ] Update Nginx regex on VM to include `auth|users|swagger|openapi` (`location ~ ^/(health|auth|users|sessions|jobs|swagger|openapi)`) and verify `https://levvy.tech/swagger`
 - [ ] Two audio fixtures tested end-to-end (with both Groq and `ASR_PROVIDER=deepgram`)

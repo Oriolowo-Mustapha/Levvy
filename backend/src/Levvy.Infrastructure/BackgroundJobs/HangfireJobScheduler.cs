@@ -19,4 +19,17 @@ public sealed class HangfireJobScheduler(IBackgroundJobClient jobClient) : IBack
         return jobClient.Enqueue<StudyPackGenerationJob>(
             job => job.ExecuteAsync(sessionId, CancellationToken.None));
     }
+
+    public string EnqueueDispatchOnlineClassBot(Guid sessionId)
+    {
+        return jobClient.Enqueue<OnlineClassBotJob>(
+            job => job.DispatchAsync(sessionId, CancellationToken.None));
+    }
+
+    public string EnqueueMonitorOnlineClassBot(Guid sessionId)
+    {
+        return jobClient.Schedule<OnlineClassBotJob>(
+            job => job.MonitorAsync(sessionId, CancellationToken.None),
+            TimeSpan.FromSeconds(30));
+    }
 }
