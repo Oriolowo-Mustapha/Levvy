@@ -28,6 +28,9 @@ internal sealed class DeepgramUtterance
 
 internal sealed class DeepgramChannel
 {
+    [JsonPropertyName("detected_language")]
+    public string? DetectedLanguage { get; set; }
+
     [JsonPropertyName("alternatives")]
     public List<DeepgramAlternative>? Alternatives { get; set; }
 }
@@ -36,4 +39,22 @@ internal sealed class DeepgramAlternative
 {
     [JsonPropertyName("transcript")]
     public string? Transcript { get; set; }
+
+    [JsonPropertyName("words")]
+    public List<DeepgramWord>? Words { get; set; }
+}
+
+internal sealed class DeepgramWord
+{
+    [JsonPropertyName("word")]
+    public string? Word { get; set; }
+
+    [JsonPropertyName("punctuated_word")]
+    public string? PunctuatedWord { get; set; }
+
+    [JsonPropertyName("start")]
+    public double Start { get; set; }
+
+    [JsonPropertyName("end")]
+    public double End { get; set; }
 }

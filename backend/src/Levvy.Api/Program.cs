@@ -28,13 +28,14 @@ builder.Services.AddCors(opt =>
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<LectureSessionHub>();
+builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<LevvyDbContext>();
-    db.Database.EnsureCreated();
+    DatabaseInitializer.Initialize(db);
 }
 
 app.UseCors();
@@ -45,7 +46,11 @@ app.UseWebSockets(new WebSocketOptions
 
 app.UseHangfireDashboard("/jobs");
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "levvy-api" }));
+app.MapOpenApi();
+app.MapSwaggerEndpoints();
+app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "levvy-api" }))
+   .WithTags("Health")
+   .WithSummary("Health check endpoint");
 app.MapSessionEndpoints();
 app.MapWebSocketEndpoints();
 

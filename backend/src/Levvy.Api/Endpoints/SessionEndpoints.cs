@@ -16,16 +16,16 @@ public static class SessionEndpoints
     {
         var group = routes.MapGroup("/sessions").WithTags("Sessions");
 
-        group.MapPost("/", CreateSession);
-        group.MapPost("/demo", SeedDemoSession);
-        group.MapGet("/{code}", GetSessionByCode);
-        group.MapPost("/{code}/join", JoinSession);
-        group.MapGet("/{code}/transcript", GetTranscript);
-        group.MapPost("/{code}/ask", AskQuestion);
-        group.MapPost("/{id:guid}/end", EndSession);
-        group.MapGet("/{code}/pack", GetStudyPack);
-        group.MapPost("/{id:guid}/audio", UploadAudio);
-        group.MapGet("/{code}/audio", StreamAudio);
+        group.MapPost("/", CreateSession).WithSummary("Create a new live lecture session");
+        group.MapPost("/demo", SeedDemoSession).WithSummary("Seed or retrieve the K4F-8Q2 demo lecture session");
+        group.MapGet("/{code}", GetSessionByCode).WithSummary("Get session metadata by room code");
+        group.MapPost("/{code}/join", JoinSession).WithSummary("Join a lecture session with preferred subtitle language");
+        group.MapGet("/{code}/transcript", GetTranscript).WithSummary("Get full transcript timeline for a session");
+        group.MapPost("/{code}/ask", AskQuestion).WithSummary("Ask a grounded question against the lecture transcript");
+        group.MapPost("/{id:guid}/end", EndSession).WithSummary("End a live session and queue Study Pack generation");
+        group.MapGet("/{code}/pack", GetStudyPack).WithSummary("Get generated Study Pack summary and flashcards");
+        group.MapPost("/{id:guid}/audio", UploadAudio).WithSummary("Upload recorded session audio to object storage");
+        group.MapGet("/{code}/audio", StreamAudio).WithSummary("Stream recorded session audio with range support");
 
         return group;
     }

@@ -17,6 +17,8 @@ public static class DotEnvLoader
         ["GROQ_ASR_MODEL"] = "Groq__AsrModel",
         ["DEEPGRAM_API_KEY"] = "Deepgram__ApiKey",
         ["DEEPGRAM_BASE_URL"] = "Deepgram__BaseUrl",
+        ["DEEPGRAM_MODEL"] = "Deepgram__Model",
+        ["ASR_PROVIDER"] = "Asr__Provider",
         ["STORAGE_ENDPOINT"] = "Storage__Endpoint",
         ["STORAGE_REGION"] = "Storage__Region",
         ["STORAGE_BUCKET"] = "Storage__Bucket",
