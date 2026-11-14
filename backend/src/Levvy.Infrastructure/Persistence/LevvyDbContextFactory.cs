@@ -15,7 +15,9 @@ public sealed class LevvyDbContextFactory : IDesignTimeDbContextFactory<LevvyDbC
     {
         var env = DotEnvLoader.LoadFromDefaultLocations();
         var connString =
-            (env.TryGetValue("DATABASE_URL", out var url) && !string.IsNullOrWhiteSpace(url) ? url : null)
+            (env.TryGetValue("ConnectionStrings:Levvy", out var cs) && !string.IsNullOrWhiteSpace(cs) ? cs : null)
+            ?? (env.TryGetValue("DATABASE_URL", out var url) && !string.IsNullOrWhiteSpace(url) ? url : null)
+            ?? Environment.GetEnvironmentVariable("ConnectionStrings__Levvy")
             ?? Environment.GetEnvironmentVariable("DATABASE_URL")
             ?? DependencyInjection.DefaultConnectionString;
 

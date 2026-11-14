@@ -33,7 +33,7 @@ Git repository initialized at `c:\Users\ADMIN\source\repos\Levvy`, pushed to `or
 - **Patterns:** Repository, CQRS + MediatR, Result Pattern, Pipeline Validation (`FluentValidation`), Domain Event Handlers (`INotificationHandler`), Hangfire Background Jobs, Minimal APIs + OpenAPI/Swagger.
 - **Files owned:** `Levvy.Infrastructure/Persistence/`, `Levvy.Infrastructure/Storage/`, `Levvy.Infrastructure/BackgroundJobs/`, `Levvy.Application/`, `Levvy.Api/Endpoints/`.
 - **Tasks:**
-  1. [x] Implement `SessionRepository` (EF Core against **Vultr Managed PostgreSQL**) + `LevvyDbContextFactory` + Npgsql `InitialCreate` migration + idempotent `DatabaseInitializer`.
+  1. [x] Implement `SessionRepository` (EF Core against **Vultr Managed PostgreSQL**) + `LevvyDbContextFactory` + standard EF Core `Add-Migration` (`20261114031741_InitialCreate`) & `Update-Database` / `db.Database.Migrate()`.
   2. [x] Implement `VultrAudioStore` (`IAudioStore`) against **Vultr Object Storage** (`levvy-recordings` S3-compatible).
   3. [x] Implement `CreateSessionCommand`, `JoinSessionCommand`, `EndSessionCommand` handlers + FluentValidation validators.
   4. [x] Implement `GetSessionByCodeQuery`, `GetTranscriptQuery`, & `GetStudyPackByCodeQuery` handlers.

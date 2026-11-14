@@ -13,7 +13,7 @@
 | Monorepo & Tooling | 🟢 Done | `backend/` (.NET 10 Clean Arch) + `frontend/` (Next.js standalone) + GitHub Actions CD (`deploy-vultr.yml`) |
 | Backend Domain & Contracts | 🟢 Done | Entities, Result pattern, MediatR CQRS, FluentValidation, Domain Events |
 | Backend Implementation | 🟢 Done | Groq LLM/ASR, Deepgram AI (`nova-2`, auto-lang, `ASR_PROVIDER`), S3 AudioStore (with signed S3 read path), Hangfire, Npgsql Migrations, OpenAPI/Swagger (`/swagger`) |
-| Persistence | 🟢 Done | **Npgsql-only** (Vultr Managed PostgreSQL), `InitialCreate` migration, `DatabaseInitializer` (migrate + EnsureCreated baseline) |
+| Persistence | 🟢 Done | **Npgsql-only** (Vultr Managed PostgreSQL), `InitialCreate` migration, standard `Database.Migrate()` convention |
 | Frontend Foundation (`api.ts`) | 🟢 Done | Typed REST + WebSocket client (`frontend/src/lib/api.ts`), design tokens (`globals.css`), `output: "standalone"` |
 | Frontend Pages | 🟡 In Progress (Frontend Dev) | Landing/Join, Host Console, Viewer Workspace, Study Pack UI pages |
 | Vultr Infrastructure | 🟢 Provisioned | Compute (`64.177.55.161`), Managed Postgres, Object Storage (`levvy-recordings`), `levvy.tech` HTTPS/WSS |
@@ -26,8 +26,8 @@
 ### Shared Baseline
 - [x] Clean Architecture solution (`Domain`, `Application`, `Infrastructure`, `Api`, `Tests`)
 - [x] Domain entities (`Session`, `Participant`, `TranscriptSegment`, `Question`, `Answer`, `AnswerCitation`, `StudyPack`, `Flashcard`)
-- [x] `LevvyDbContext` + **Npgsql-only** persistence (`ConnectionStrings:Levvy` / `DATABASE_URL`; `.env` loader + local dev default)
-- [x] `LevvyDbContextFactory` + Npgsql `InitialCreate` migration + idempotent `DatabaseInitializer` (baselines DBs previously created via `EnsureCreated`)
+- [x] `LevvyDbContext` + **Npgsql-only** persistence (`ConnectionStrings:Levvy` / `DATABASE_URL`; local dev default `Host=localhost;Database=levvy`)
+- [x] Standard EF Core migrations (`Add-Migration` / `dotnet ef migrations add` → `20261114031741_InitialCreate`) + `Update-Database` / `db.Database.Migrate()`
 - [x] OpenAPI (`/openapi/v1.json`) + interactive Swagger UI (`/swagger`) wired in `Program.cs` & `SwaggerEndpoints`
 - [x] Baseline DI, `.env`, and Result pattern tests passing (`PipelineTests`)
 
@@ -39,16 +39,15 @@
 - [x] `/ws/{sessionId}` WebSocket hub (`LectureSessionHub`) + per-viewer language registry + `CaptionFinalized` fan-out
 - [x] Unit tests for Groq + Deepgram timestamp offset math, `ASR_PROVIDER=deepgram` routing, and LLM fallback/citation parsing (`AsrAndLlmTests`)
 
-### Postgres, Object Storage, CQRS, Hangfire & REST
-- [x] `SessionRepository` EF Core implementation + initial Npgsql migration
-- [x] `VultrAudioStore` (`IAudioStore` S3-compatible against Vultr Object Storage) — signed PUT upload **and signed GET read fallback** so receipt playback resolves from S3 when no local copy exists
+### Adeyemi Mubarak (Dev B) — Vultr Postgres, Object Storage, CQRS, Hangfire & REST
+- [x] `SessionRepository` EF Core implementation + Npgsql migration (`20261114031741_InitialCreate`) via standard `Add-Migration` / `Update-Database`
+- [x] `VultrAudioStore` (`IAudioStore` S3-compatible against Vultr Object Storage) — upload via signed PUT **and signed GET read fallback** so receipt playback resolves from S3 when no local copy exists
 - [x] `CreateSessionCommand`, `JoinSessionCommand`, `EndSessionCommand` handlers + FluentValidation validators
 - [x] `GetSessionByCodeQuery`, `GetTranscriptQuery`, `GetStudyPackByCodeQuery` handlers
-- [x] `AskQuestionCommand` handler + validator (`cite-or-say-not-covered`)
-- [x] Hangfire background jobs (`CaptionPersistenceJob`, `StudyPackGenerationJob`, `StaleSessionCleanupJob`, `RecurringJobRegistrationService`) + `/jobs` dashboard
-- [x] Minimal API REST endpoints (`/health`, `/sessions`, `/sessions/demo`, `/join`, `/ask`, `/transcript`, `/end`, `/pack`, `/audio`) with OpenAPI summaries
-- [x] End-to-end CQRS + Hangfire worker tests passing (`PipelineTests`)
-- [x] Persistence unit tests (`SessionRepositoryTests`): code normalization, unique Code index, full-graph load, study-pack query mapping (SQLite in-memory as test-only fake provider)
+- [x] `AskQuestionCommand` handler + `AskQuestionCommandValidator` (`cite-or-say-not-covered`)
+- [x] Hangfire background jobs (`CaptionPersistenceJob`, `StudyPackGenerationJob` with 3 retries, `StaleSessionCleanupJob`, `RecurringJobRegistrationService`) + `/jobs` dashboard
+- [x] Minimal API REST endpoints (`/health`, `/sessions`, `/sessions/demo`, `/join`, `/ask`, `/transcript`, `/end`, `/pack`, `/audio` up+down) with OpenAPI summaries
+- [x] Unit tests for validation, grounding, Hangfire workers, and EF persistence (`PipelineTests`, `SessionRepositoryTests`)
 
 ---
 
