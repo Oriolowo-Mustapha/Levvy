@@ -58,13 +58,16 @@ public static class SessionEndpoints
     private static async Task<IResult> JoinSession(
         string code,
         JoinSessionRequest req,
+        HttpContext http,
+        IJwtTokenGenerator jwt,
         ISender sender,
         CancellationToken ct)
     {
         try
         {
+            var userId = HttpUserResolver.ResolveCurrentUserId(http, jwt, req.UserId);
             var result = await sender.Send(
-                new JoinSessionCommand(code, req.DisplayName ?? "Student", req.PreferredLanguage ?? "en"),
+                new JoinSessionCommand(code, req.DisplayName ?? "Student", req.PreferredLanguage ?? "en", userId),
                 ct);
             return Results.Ok(result);
         }

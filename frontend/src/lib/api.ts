@@ -72,6 +72,103 @@ export interface StudyPackResponse {
   transcript: TranscriptLineDto[];
 }
 
+// --- Auth & User Dashboard DTOs ---
+
+export interface UserProfileDto {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  authProvider: "local" | "google";
+  avatarUrl?: string | null;
+  role: "student" | "instructor";
+  institution?: string | null;
+  department?: string | null;
+  preferredLanguage: string;
+  accessibilityMode: "standard" | "deaf_hoh" | "international";
+  captionFontSize: "sm" | "md" | "lg" | "xl";
+  createdAtUtc: string;
+  lastLoginAtUtc: string;
+}
+
+export interface AuthResponseDto {
+  accessToken: string;
+  expiresAtUtc: string;
+  user: UserProfileDto;
+}
+
+export interface RegisterUserRequest {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  role?: "student" | "instructor";
+  institution?: string;
+  department?: string;
+  preferredLanguage?: string;
+  accessibilityMode?: "standard" | "deaf_hoh" | "international";
+  captionFontSize?: "sm" | "md" | "lg" | "xl";
+}
+
+export interface LoginUserRequest {
+  email: string;
+  password: string;
+}
+
+export interface GoogleAuthRequest {
+  idToken: string;
+  role?: "student" | "instructor";
+  institution?: string;
+  department?: string;
+  preferredLanguage?: string;
+  accessibilityMode?: "standard" | "deaf_hoh" | "international";
+}
+
+export interface UpdateUserProfileRequest {
+  firstName: string;
+  lastName: string;
+  role?: "student" | "instructor";
+  institution?: string;
+  department?: string;
+  preferredLanguage?: string;
+  accessibilityMode?: "standard" | "deaf_hoh" | "international";
+  captionFontSize?: "sm" | "md" | "lg" | "xl";
+  avatarUrl?: string;
+}
+
+export interface DashboardSessionItemDto {
+  id: string;
+  code: string;
+  title: string;
+  isLive: boolean;
+  startedAtUtc: string;
+  endedAtUtc?: string | null;
+  participantCount: number;
+  hasStudyPack: boolean;
+  hasRecording: boolean;
+}
+
+export interface DashboardStudyPackItemDto {
+  studyPackId: string;
+  sessionId: string;
+  sessionCode: string;
+  sessionTitle: string;
+  summary: string;
+  flashcardCount: number;
+  generatedAtUtc: string;
+}
+
+export interface UserDashboardDto {
+  profile: UserProfileDto;
+  totalSessionsHosted: number;
+  totalSessionsAttended: number;
+  totalQuestionsAsked: number;
+  totalStudyPacksAvailable: number;
+  hostedSessions: DashboardSessionItemDto[];
+  attendedSessions: DashboardSessionItemDto[];
+  studyPacks: DashboardStudyPackItemDto[];
+}
+
 // --- WebSocket Event Payloads ---
 
 export interface WsCaptionMessage {
@@ -126,14 +223,19 @@ export async function createSession(
 export async function joinSession(
   code: string,
   displayName: string,
-  preferredLanguage: string = "en"
+  preferredLanguage: string = "en",
+  userId?: string,
+  token?: string
 ): Promise<JoinSessionResponse> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
   const res = await fetch(
     `${API_BASE}/sessions/${encodeURIComponent(code.trim().toUpperCase())}/join`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ displayName, preferredLanguage }),
+      headers,
+      body: JSON.stringify({ displayName, preferredLanguage, userId }),
     }
   );
   if (!res.ok) throw new Error(`POST /sessions/${code}/join failed (${res.status})`);
@@ -188,6 +290,75 @@ export async function getStudyPack(code: string): Promise<StudyPackResponse> {
     { cache: "no-store" }
   );
   if (!res.ok) throw new Error(`GET /sessions/${code}/pack failed (${res.status})`);
+  return res.json();
+}
+
+// --- Auth & User Dashboard REST Calls ---
+
+function authHeaders(token?: string): Record<string, string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
+export async function registerUser(payload: RegisterUserRequest): Promise<AuthResponseDto> {
+  const res = await fetch(`${API_BASE}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`POST /auth/register failed (${res.status})`);
+  return res.json();
+}
+
+export async function loginUser(payload: LoginUserRequest): Promise<AuthResponseDto> {
+  const res = await fetch(`${API_BASE}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`POST /auth/login failed (${res.status})`);
+  return res.json();
+}
+
+export async function loginWithGoogle(payload: GoogleAuthRequest): Promise<AuthResponseDto> {
+  const res = await fetch(`${API_BASE}/auth/google`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`POST /auth/google failed (${res.status})`);
+  return res.json();
+}
+
+export async function getCurrentUser(token: string): Promise<UserProfileDto> {
+  const res = await fetch(`${API_BASE}/auth/me`, {
+    headers: authHeaders(token),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`GET /auth/me failed (${res.status})`);
+  return res.json();
+}
+
+export async function updateUserProfile(
+  token: string,
+  payload: UpdateUserProfileRequest
+): Promise<UserProfileDto> {
+  const res = await fetch(`${API_BASE}/users/me/profile`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`PUT /users/me/profile failed (${res.status})`);
+  return res.json();
+}
+
+export async function getUserDashboard(token: string): Promise<UserDashboardDto> {
+  const res = await fetch(`${API_BASE}/users/me/dashboard`, {
+    headers: authHeaders(token),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`GET /users/me/dashboard failed (${res.status})`);
   return res.json();
 }
 
