@@ -1,0 +1,49 @@
+name: Backend CI (.NET 10)
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: Restore, Audit, Build & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore dependencies
+        run: dotnet restore Levvy.slnx
+
+      - name: Audit NuGet packages for vulnerabilities
+        run: |
+          OUTPUT=$(dotnet list Levvy.slnx package --vulnerable --include-transitive)
+          echo "$OUTPUT"
+          if echo "$OUTPUT" | grep -q "has the following vulnerable packages"; then
+            echo "Vulnerable NuGet packages detected!"
+            exit 1
+          fi
+
+      - name: Build solution (Release)
+        run: dotnet build Levvy.slnx --configuration Release --no-restore
+
+      - name: Run xUnit tests (Grounding, Timeline Math & Pipeline)
+        run: dotnet test Levvy.slnx --configuration Release --no-build --verbosity normal

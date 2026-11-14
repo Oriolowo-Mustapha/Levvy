@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Levvy.Api/Levvy.Api.csproj" />
+    <Project Path="src/Levvy.Application/Levvy.Application.csproj" />
+    <Project Path="src/Levvy.Domain/Levvy.Domain.csproj" />
+    <Project Path="src/Levvy.Infrastructure/Levvy.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Levvy.Tests/Levvy.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+:root {
+  --ground: #F4F5F7;
+  --sheet: #FFFFFF;
+  --ink: #1E2A38;
+  --ink-2: #5A6675;
+  --ink-3: #8B96A3;
+  --line: #E4E7EC;
+  --line-2: #D6DAE1;
+  --tint: #EDF3FE;
+  --tint-edge: #C7D9F8;
+  --accent: #2563EB;
+  --good: #1F7A3F;
+  --live: #C0362C;
+  --amber-tint: #FDF3E3;
+  --green-tint: #EBF5EE;
+  --violet-tint: #F3F0FB;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 14px;
+  margin: 0;
+  padding: 0;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
