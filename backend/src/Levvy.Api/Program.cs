@@ -5,6 +5,7 @@ using Levvy.Application;
 using Levvy.Infrastructure;
 using Levvy.Infrastructure.Configuration;
 using Levvy.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 // 1. Load environment variables from .env (repo root or backend/) before building configuration
 var dotEnvValues = DotEnvLoader.LoadFromDefaultLocations();

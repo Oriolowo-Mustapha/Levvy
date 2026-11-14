@@ -239,7 +239,7 @@ namespace Levvy.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("SessionId");
+                    b.HasIndex("SessionId", "OffsetMs");
 
                     b.ToTable("TranscriptSegments");
                 });

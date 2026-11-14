@@ -7,7 +7,7 @@ See the full PRD: `Documents/Levvy/Levvy-PRD.pdf`.
 
 - **API:** ASP.NET Core minimal APIs + WebSockets, .NET 10
 - **CQRS:** MediatR 12.4.1 (Apache license), FluentValidation 12.2.0
-- **Persistence:** EF Core. SQLite locally; Vultr Managed Postgres in prod (connection-string swap)
+- **Persistence:** EF Core + Npgsql only — Vultr Managed Postgres in prod, local Postgres in dev (`DATABASE_URL` / `ConnectionStrings:Levvy`)
 - **LLM + STT:** Groq, OpenAI-compatible endpoint. Answers: `gpt-oss-120b` (fallback `llama-3.3-70b-versatile`). STT: `whisper-large-v3-turbo`, chunked (~5-10s), chunk offsets accumulate into the receipt timeline
 - **Storage:** Vultr Object Storage (S3-compatible): recordings + packs
 - **Fallback ASR:** Deepgram ($200 free credit), same `IAsrStreamer` interface, swap-in only

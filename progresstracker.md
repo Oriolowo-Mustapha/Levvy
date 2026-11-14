@@ -25,10 +25,9 @@
 ### Shared Baseline
 - [x] Clean Architecture solution (`Domain`, `Application`, `Infrastructure`, `Api`, `Tests`)
 - [x] Domain entities (`Session`, `Participant`, `TranscriptSegment`, `Question`, `Answer`, `AnswerCitation`, `StudyPack`, `Flashcard`)
-- [x] `LevvyDbContext` + SQLite/Postgres provider switch (`DATABASE_PROVIDER=postgres`) + `.env` loader (`DotEnvLoader`)
-- [x] `LevvyDbContextFactory` + Npgsql `InitialCreate` migration + idempotent `DatabaseInitializer`
-- [x] OpenAPI (`/openapi/v1.json`) + interactive Swagger UI (`/swagger`) wired in `Program.cs` & `SwaggerEndpoints`
-- [x] Baseline DI, `.env`, and Result pattern tests passing (`PipelineTests`)
+- [x] `LevvyDbContext` + **Npgsql-only** persistence (`ConnectionStrings:Levvy` / `DATABASE_URL`; local dev default `Host=localhost;Database=levvy`)
+- [x] EF Core migrations (`InitialCreate`) + design-time factory; `Database.Migrate()` replaces `EnsureCreated`
+- [x] Baseline DI test passing (`PipelineTests`)
 
 ### AI/LLM, ASR Hot Pipe & WebSockets
 - [x] `GroqLlmClient` (`ITranslator` + `ILlmAnswerer` with `gpt-oss-120b` / `llama-3.3-70b-versatile`)
@@ -38,6 +37,16 @@
 - [x] `/ws/{sessionId}` WebSocket hub (`LectureSessionHub`) + per-viewer language registry + `CaptionFinalized` fan-out
 - [x] Unit tests for Groq + Deepgram timestamp offset math, `ASR_PROVIDER=deepgram` routing, and LLM fallback/citation parsing (`AsrAndLlmTests`)
 
+### Adeyemi Mubarak (Dev B) — Vultr Postgres, Object Storage, CQRS & REST
+- [x] `ISessionRepository` EF Core implementation + Npgsql migration (straight on Vultr Managed Postgres)
+- [x] `IAudioStore` (straight on Vultr Object Storage S3) — upload via signed PUT **and signed GET read fallback** so receipt playback resolves from S3 when no local copy exists
+- [x] `CreateSessionCommand`, `JoinSessionCommand`, `EndSessionCommand` handlers + validators
+- [x] `GetSessionByCodeQuery` & `GetTranscriptQuery` handlers
+- [x] `AskQuestionCommand` handler + `AskQuestionCommandValidator`
+- [x] `SessionEnded` event handler + `GenerateStudyPackCommand` handler (Hangfire-enqueued with 3 retries)
+- [x] Minimal API REST endpoints (`/sessions`, `/demo`, `/join`, `/ask`, `/transcript`, `/end`, `/pack`, `/audio` up+down)
+- [x] Unit tests for validation, grounding, and study-pack citations
+- [x] Persistence unit tests (`SessionRepositoryTests`): code normalization, unique Code index, full-graph load, study-pack query mapping (SQLite in-memory as test-only fake provider)
 ### Postgres, Object Storage, CQRS, Hangfire & REST
 - [x] `SessionRepository` EF Core implementation + initial Npgsql migration (`20261114031932_InitialCreate`)
 - [x] `VultrAudioStore` (`IAudioStore` S3-compatible against Vultr Object Storage)
