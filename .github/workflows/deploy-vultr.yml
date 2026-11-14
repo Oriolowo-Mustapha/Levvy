@@ -44,6 +44,12 @@ jobs:
         run: |
           npm ci
           npm run build
+          mkdir -p ../publish/web
+          cp -r .next/standalone/. ../publish/web/
+          mkdir -p ../publish/web/.next
+          cp -r .next/static ../publish/web/.next/static
+          if [ -d public ]; then cp -r public ../publish/web/public; fi
+          tar -czf ../publish/web.tar.gz -C ../publish/web .
 
       - name: Upload Backend Artifact to Vultr Compute
         if: ${{ env.VULTR_HOST_CHECK != '' }}
@@ -56,6 +62,17 @@ jobs:
           target: "/opt/levvy"
           strip_components: 2
 
+      - name: Upload Frontend Artifact to Vultr Compute
+        if: ${{ env.VULTR_HOST_CHECK != '' }}
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VULTR_HOST }}
+          username: ${{ secrets.VULTR_USER }}
+          key: ${{ secrets.VULTR_SSH_KEY }}
+          source: "publish/web.tar.gz"
+          target: "/opt/levvy-web"
+          strip_components: 1
+
       - name: Restart Services on Vultr Compute
         if: ${{ env.VULTR_HOST_CHECK != '' }}
         uses: appleboy/ssh-action@v1.0.3
@@ -64,5 +81,8 @@ jobs:
           username: ${{ secrets.VULTR_USER }}
           key: ${{ secrets.VULTR_SSH_KEY }}
           script: |
-            sudo systemctl restart levvy-api || true
-            sudo systemctl status levvy-api --no-pager || true
+            sudo mkdir -p /opt/levvy-web
+            sudo tar -xzf /opt/levvy-web/web.tar.gz -C /opt/levvy-web
+            sudo rm -f /opt/levvy-web/web.tar.gz
+            sudo systemctl restart levvy-api levvy-web || true
+            sudo systemctl status levvy-api levvy-web --no-pager || true
