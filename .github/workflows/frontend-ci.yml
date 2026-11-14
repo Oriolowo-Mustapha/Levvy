@@ -46,3 +46,12 @@ jobs:
 
       - name: Build Next.js production bundle
         run: npm run build
+
+      - name: Install test browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify production routes, audio contracts, and accessibility
+        run: npm test
+        env:
+          PLAYWRIGHT_USE_PRODUCTION: "true"
+          PLAYWRIGHT_BASE_URL: "http://127.0.0.1:3100"

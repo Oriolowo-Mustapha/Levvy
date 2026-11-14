@@ -147,3 +147,7 @@ All keys are documented in `backend/.env.example`; copy it to `backend/.env` and
 3. Both AI providers fail → captions stop; record a fixture-based offline demo as the safety net
 4. Meeting-bot provider fails → session stays Mode B (browser tab audio), demo unaffected
 5. Vultr services are owned by us, so the failure window is provisioning, not outages
+
+## UI integration verification — 14 November 2026
+
+The new frontend connects to the configured API/WebSocket addresses and contains no provider keys. Local contract tests use explicit fixtures, not the external services above. Read-only requests to `https://levvy.tech/health` and `/sessions/K4F-8Q2` returned 502 Bad Gateway during verification. Production PostgreSQL, ASR, translation, grounding, object storage, OAuth and study-generation integration should not be considered verified by the frontend test suite.

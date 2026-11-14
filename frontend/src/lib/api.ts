@@ -4,7 +4,8 @@
  */
 
 export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:5000";
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
+  "http://localhost:5000";
 
 export const WS_BASE =
   process.env.NEXT_PUBLIC_WS_URL?.replace(/\/$/, "") ||
@@ -188,9 +189,7 @@ export interface WsTranslationMessage {
 }
 
 export type WsInboundMessage =
-  | WsCaptionMessage
-  | WsTranslationMessage
-  | AskAnswerResponse;
+  WsCaptionMessage | WsTranslationMessage | AskAnswerResponse;
 
 // --- Utility ---
 
@@ -209,7 +208,7 @@ export function getSessionAudioUrl(code: string): string {
 
 export async function createSession(
   title: string,
-  hostId?: string
+  hostId?: string,
 ): Promise<CreateSessionResponse> {
   const res = await fetch(`${API_BASE}/sessions`, {
     method: "POST",
@@ -225,9 +224,11 @@ export async function joinSession(
   displayName: string,
   preferredLanguage: string = "en",
   userId?: string,
-  token?: string
+  token?: string,
 ): Promise<JoinSessionResponse> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(
@@ -236,34 +237,40 @@ export async function joinSession(
       method: "POST",
       headers,
       body: JSON.stringify({ displayName, preferredLanguage, userId }),
-    }
+    },
   );
-  if (!res.ok) throw new Error(`POST /sessions/${code}/join failed (${res.status})`);
+  if (!res.ok)
+    throw new Error(`POST /sessions/${code}/join failed (${res.status})`);
   return res.json();
 }
 
-export async function getSession(code: string): Promise<SessionSummaryResponse> {
+export async function getSession(
+  code: string,
+): Promise<SessionSummaryResponse> {
   const res = await fetch(
     `${API_BASE}/sessions/${encodeURIComponent(code.trim().toUpperCase())}`,
-    { cache: "no-store" }
+    { cache: "no-store" },
   );
   if (!res.ok) throw new Error(`GET /sessions/${code} failed (${res.status})`);
   return res.json();
 }
 
-export async function getTranscript(code: string): Promise<SessionTranscriptResponse> {
+export async function getTranscript(
+  code: string,
+): Promise<SessionTranscriptResponse> {
   const res = await fetch(
     `${API_BASE}/sessions/${encodeURIComponent(code.trim().toUpperCase())}/transcript`,
-    { cache: "no-store" }
+    { cache: "no-store" },
   );
-  if (!res.ok) throw new Error(`GET /sessions/${code}/transcript failed (${res.status})`);
+  if (!res.ok)
+    throw new Error(`GET /sessions/${code}/transcript failed (${res.status})`);
   return res.json();
 }
 
 export async function askQuestion(
   code: string,
   text: string,
-  askerId?: string
+  askerId?: string,
 ): Promise<AskAnswerResponse> {
   const res = await fetch(
     `${API_BASE}/sessions/${encodeURIComponent(code.trim().toUpperCase())}/ask`,
@@ -271,37 +278,47 @@ export async function askQuestion(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text, askerId }),
-    }
+    },
   );
-  if (!res.ok) throw new Error(`POST /sessions/${code}/ask failed (${res.status})`);
+  if (!res.ok)
+    throw new Error(`POST /sessions/${code}/ask failed (${res.status})`);
   return res.json();
 }
 
 export async function endSession(sessionId: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/end`, {
-    method: "POST",
-  });
-  if (!res.ok) throw new Error(`POST /sessions/${sessionId}/end failed (${res.status})`);
+  const res = await fetch(
+    `${API_BASE}/sessions/${encodeURIComponent(sessionId)}/end`,
+    {
+      method: "POST",
+    },
+  );
+  if (!res.ok)
+    throw new Error(`POST /sessions/${sessionId}/end failed (${res.status})`);
 }
 
 export async function getStudyPack(code: string): Promise<StudyPackResponse> {
   const res = await fetch(
     `${API_BASE}/sessions/${encodeURIComponent(code.trim().toUpperCase())}/pack`,
-    { cache: "no-store" }
+    { cache: "no-store" },
   );
-  if (!res.ok) throw new Error(`GET /sessions/${code}/pack failed (${res.status})`);
+  if (!res.ok)
+    throw new Error(`GET /sessions/${code}/pack failed (${res.status})`);
   return res.json();
 }
 
 // --- Auth & User Dashboard REST Calls ---
 
 function authHeaders(token?: string): Record<string, string> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
   if (token) headers.Authorization = `Bearer ${token}`;
   return headers;
 }
 
-export async function registerUser(payload: RegisterUserRequest): Promise<AuthResponseDto> {
+export async function registerUser(
+  payload: RegisterUserRequest,
+): Promise<AuthResponseDto> {
   const res = await fetch(`${API_BASE}/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -311,7 +328,9 @@ export async function registerUser(payload: RegisterUserRequest): Promise<AuthRe
   return res.json();
 }
 
-export async function loginUser(payload: LoginUserRequest): Promise<AuthResponseDto> {
+export async function loginUser(
+  payload: LoginUserRequest,
+): Promise<AuthResponseDto> {
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -321,7 +340,9 @@ export async function loginUser(payload: LoginUserRequest): Promise<AuthResponse
   return res.json();
 }
 
-export async function loginWithGoogle(payload: GoogleAuthRequest): Promise<AuthResponseDto> {
+export async function loginWithGoogle(
+  payload: GoogleAuthRequest,
+): Promise<AuthResponseDto> {
   const res = await fetch(`${API_BASE}/auth/google`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -342,7 +363,7 @@ export async function getCurrentUser(token: string): Promise<UserProfileDto> {
 
 export async function updateUserProfile(
   token: string,
-  payload: UpdateUserProfileRequest
+  payload: UpdateUserProfileRequest,
 ): Promise<UserProfileDto> {
   const res = await fetch(`${API_BASE}/users/me/profile`, {
     method: "PUT",
@@ -353,12 +374,15 @@ export async function updateUserProfile(
   return res.json();
 }
 
-export async function getUserDashboard(token: string): Promise<UserDashboardDto> {
+export async function getUserDashboard(
+  token: string,
+): Promise<UserDashboardDto> {
   const res = await fetch(`${API_BASE}/users/me/dashboard`, {
     headers: authHeaders(token),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`GET /users/me/dashboard failed (${res.status})`);
+  if (!res.ok)
+    throw new Error(`GET /users/me/dashboard failed (${res.status})`);
   return res.json();
 }
 
@@ -386,7 +410,9 @@ export function connectSessionSocket(opts: SessionSocketOptions) {
   if (opts.code) params.set("code", opts.code);
   if (opts.participantId) params.set("participantId", opts.participantId);
 
-  const ws = new WebSocket(`${WS_BASE}/ws/${opts.sessionId}?${params.toString()}`);
+  const ws = new WebSocket(
+    `${WS_BASE}/ws/${opts.sessionId}?${params.toString()}`,
+  );
 
   ws.onopen = () => opts.onOpen?.();
   ws.onclose = () => opts.onClose?.();

@@ -61,18 +61,24 @@
 
 ---
 
-## Frontend (`frontend/`)
+## Frontend (implementation update, 14 November 2026)
 
-- [x] Next.js App Router + TypeScript + Tailwind CSS + ESLint + `output: "standalone"` configured
-- [x] Apply design tokens (`#F4F5F7` ground, `#2563EB` accent, `tabular-nums`) in `globals.css`
-- [x] Typed Auth, Google SSO, Dashboard, REST & WebSocket client (`src/lib/api.ts`)
-- [ ] Login / Sign Up pages (`src/app/login/page.tsx`, `src/app/signup/page.tsx`) with Google Sign-In
-- [ ] User Dashboard page (`src/app/dashboard/page.tsx`) — profile (`FirstName`, `LastName`, preferences), hosted/attended classes, study packs
-- [ ] Landing / Join page (`src/app/page.tsx`)
-- [ ] Host console (`src/app/host/page.tsx`) — mic, tab audio (Google Meet bridge), file upload, QR code
-- [ ] Viewer workspace (`src/app/session/[code]/page.tsx`) — live transcript, subtitle selector, Ask Levvy, audio receipt player
-- [ ] Study pack view (`src/app/session/[code]/pack/page.tsx`) — cited summary + flashcards
-- [ ] Mobile responsive pass & accessibility check (keyboard + contrast)
+The screenshot-led application is implemented. The checks below describe code and local browser verification, not a successful production-service deployment.
+
+- [x] Entry page with language preferences, anonymous room-code joining and host navigation.
+- [x] Email login/sign-up and optional configured Google Identity component (real Google OAuth remains unverified).
+- [x] Authenticated dashboard, session search/filter, study-pack links and saved profile/accessibility preferences.
+- [x] Host console: room creation, copyable link/code, QR, mic/tab source selection, WebM capture, input meter, timer, recording upload and end confirmation.
+- [x] Three-zone desktop viewer and stacked mobile original/translated caption cards, offset matching, reconnect/backoff, transcript, Ask Levvy and recording receipts.
+- [x] Study-pack summary citations, keyboard-operated flashcards and transcript playback.
+- [x] Shared neutral design system; screen-reader labels, focus rings, reduced motion and caption sizes.
+- [x] All seven requested viewport widths checked; automated axe AA scans of seven routes at mobile and desktop sizes.
+- [x] Build, TypeScript, lint, frontend contract/browser tests and backend unit tests pass (see IMPLEMENTATION-REPORT.md).
+- [x] Short-lived single-use session-scoped WebSocket tickets; authenticated recording uploads; host ASR status frames.
+- [ ] Actual multi-device live transcription/translation/QA/storage/study-generation rehearsal with configured PostgreSQL and provider credentials.
+- [ ] Real microphone/tab sharing and Google OAuth testing across supported browsers and devices.
+
+Public API health and session requests returned HTTP 502 during verification. Upload currently stores a WebM recording; the backend does not provide file-transcription ingestion. Pause/resume is not offered. Existing demo seeding and meeting-bot URL controls from the earlier plan are not added to this task's frontend.
 
 ---
 

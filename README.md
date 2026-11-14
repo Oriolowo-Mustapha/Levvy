@@ -50,3 +50,6 @@ REST: `POST /sessions` · `POST /sessions/{code}/join` · `GET /sessions/{code}/
 - [ ] Vultr Object Storage bucket + keys (owner has Vultr access)
 - [ ] Two demo audio fixtures recorded (a real 10 min lecture; a 2 min teammate clip)
 - [ ] 10 user conversations per teammate, per country (Reach evidence)
+## Screenshot-led frontend (14 November 2026)
+
+The frontend now includes assistant entry, email authentication, user dashboard, authenticated recording host, synchronized original/translated captions and source-linked study packs. See `frontend/README.md` for setup and browser recording limitations, and `IMPLEMENTATION-REPORT.md` for the exact verification boundary. Public API endpoints returned 502 during this session; real provider-backed end-to-end verification remains open.

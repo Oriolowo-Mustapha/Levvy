@@ -66,3 +66,7 @@ Three-zone desktop layout (collapses cleanly to stacked mobile layout for phone 
 - **Keyboard navigable** receipt chips, subtitle radios, and flashcard flips (`Enter`/`Space`).
 - **Zero-install mobile first:** Viewers never sign up or install anything; joining via QR/link lands straight into `/session/[code]`.
 - **No uncited AI text:** Frontend refuses to render an `answer` card as grounded if `status === "ok"` has an empty `receipts` array.
+
+## Screenshot-led UI implementation (14 November 2026)
+
+The attached AI Translator & Live Captions reference is the primary visual direction for the new frontend. Screen A becomes the assistant entry composition with dotted audio orb, centered heading, paired language pills and room-code card. Screen B becomes the host listening surface, real input visualization and dark recording-status pill. Screen C becomes paired light original and deep charcoal translated captions. Desktop uses the existing three-zone viewer architecture; mobile stacks the same surfaces. Black primary actions and restrained neutral surfaces replace generic scaffold styling. Font sizes remain adjustable for captions; metadata, focus, contrast and reduced motion are shared across routes.

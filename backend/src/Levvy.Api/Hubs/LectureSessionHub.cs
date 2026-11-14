@@ -158,6 +158,7 @@ public sealed class LectureSessionHub(
         var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
         IReadOnlyList<TranscriptSegment> segments;
+        await BroadcastToHostsAsync(room, new { type = "asr_status", state = "processing" }, ct);
         try
         {
             segments = await asr.TranscribeChunkAsync(audioChunk, chunkOffsetMs, room.SourceLanguage, ct);
@@ -165,11 +166,15 @@ public sealed class LectureSessionHub(
         catch (Exception ex)
         {
             logger.LogError(ex, "ASR chunk transcription failed for session {SessionId} at {OffsetMs}ms", room.SessionId, chunkOffsetMs);
+            await BroadcastToHostsAsync(room, new { type = "asr_status", state = "error" }, ct);
             return;
         }
 
         if (segments.Count == 0)
+        {
+            await BroadcastToHostsAsync(room, new { type = "asr_status", state = "ready" }, ct);
             return;
+        }
 
         foreach (var seg in segments)
         {
@@ -185,6 +190,7 @@ public sealed class LectureSessionHub(
                 ts,
                 offsetMs = seg.OffsetMs,
                 text = seg.Text,
+                sourceLanguage = seg.SourceLanguage,
                 final = true
             }, ct);
 
@@ -231,6 +237,13 @@ public sealed class LectureSessionHub(
                 await Task.WhenAll(translationTasks);
             }
         }
+        await BroadcastToHostsAsync(room, new { type = "asr_status", state = "ready" }, ct);
+    }
+
+    private static async Task BroadcastToHostsAsync(SessionRoom room, object payload, CancellationToken ct)
+    {
+        foreach (var client in room.Clients.Values.Where(c => c.Role == "host"))
+            await SendJsonAsync(client.Socket, payload, ct);
     }
 
     private async Task HandleTextMessageAsync(
