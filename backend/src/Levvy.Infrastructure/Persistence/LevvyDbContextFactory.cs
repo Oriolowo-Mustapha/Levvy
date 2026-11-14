@@ -13,9 +13,11 @@ public class LevvyDbContextFactory : IDesignTimeDbContextFactory<LevvyDbContext>
     {
         var env = DotEnvLoader.LoadFromDefaultLocations();
         var connString =
-            (env.TryGetValue("DATABASE_URL", out var url) && !string.IsNullOrWhiteSpace(url) ? url : null)
+            (env.TryGetValue("ConnectionStrings:Levvy", out var cs) && !string.IsNullOrWhiteSpace(cs) ? cs : null)
+            ?? (env.TryGetValue("DATABASE_URL", out var url) && !string.IsNullOrWhiteSpace(url) ? url : null)
+            ?? Environment.GetEnvironmentVariable("ConnectionStrings__Levvy")
             ?? Environment.GetEnvironmentVariable("DATABASE_URL")
-            ?? "Host=localhost;Database=levvy;Username=postgres;Password=postgres";
+            ?? DependencyInjection.DefaultConnectionString;
 
         var optionsBuilder = new DbContextOptionsBuilder<LevvyDbContext>();
         optionsBuilder.UseNpgsql(connString);
