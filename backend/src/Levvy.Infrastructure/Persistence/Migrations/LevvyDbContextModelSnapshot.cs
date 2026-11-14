@@ -165,6 +165,9 @@ namespace Levvy.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("BotStatus")
+                        .HasColumnType("text");
+
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasColumnType("text");
@@ -172,8 +175,17 @@ namespace Levvy.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("EndedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ExternalBotId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ExternalMeetingUrl")
+                        .HasColumnType("text");
+
                     b.Property<Guid>("HostId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("MeetingPlatform")
+                        .HasColumnType("text");
 
                     b.Property<string>("RecordingKey")
                         .HasColumnType("text");

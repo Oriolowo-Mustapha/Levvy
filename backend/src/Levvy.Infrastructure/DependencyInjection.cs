@@ -5,6 +5,7 @@ using Levvy.Infrastructure.Asr;
 using Levvy.Infrastructure.Authentication;
 using Levvy.Infrastructure.BackgroundJobs;
 using Levvy.Infrastructure.Llm;
+using Levvy.Infrastructure.Meetings;
 using Levvy.Infrastructure.Persistence;
 using Levvy.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
@@ -49,6 +50,7 @@ public static class DependencyInjection
 
         services.AddHttpClient("VultrS3");
         services.AddHttpClient("GoogleAuth");
+        services.AddHttpClient("MeetingBot");
 
         services.AddScoped<ISessionRepository, SessionRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
@@ -62,6 +64,7 @@ public static class DependencyInjection
             new VultrAudioStore(
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient("VultrS3"),
                 sp.GetRequiredService<IConfiguration>()));
+        services.AddScoped<IMeetingBotConnector, GoogleMeetBotConnector>();
 
         services.AddScoped<GroqAsrStreamer>(sp =>
             new GroqAsrStreamer(

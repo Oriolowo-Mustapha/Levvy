@@ -4,6 +4,7 @@ using Levvy.Application.Common.Interfaces;
 using Levvy.Application.Queries;
 using Levvy.Domain.Entities;
 using MediatR;
+using Microsoft.Extensions.Configuration;
 
 namespace Levvy.Api.Endpoints;
 
@@ -27,7 +28,83 @@ public static class SessionEndpoints
         group.MapPost("/{id:guid}/audio", UploadAudio).WithSummary("Upload recorded session audio to object storage");
         group.MapGet("/{code}/audio", StreamAudio).WithSummary("Stream recorded session audio with range support");
 
+        group.MapPost("/online-class", ConnectOnlineClass).WithSummary("Create a session bound to an online class (Meet/Zoom/Teams) and dispatch the Levvy Note-Taker bot");
+        group.MapPost("/{id:guid}/connect-meet", ConnectMeet).WithSummary("Attach a Google Meet / Zoom / Teams URL to an existing session and dispatch the bot");
+        group.MapPost("/{id:guid}/meet-webhook", MeetWebhook).WithSummary("Ingest meeting-bot lifecycle events and live captions (call_ended triggers study pack generation)");
+
         return group;
+    }
+
+    private static async Task<IResult> ConnectOnlineClass(
+        ConnectOnlineClassRequest req,
+        ISender sender,
+        CancellationToken ct)
+    {
+        try
+        {
+            var result = await sender.Send(
+                new ConnectOnlineClassCommand(req.HostId ?? Guid.NewGuid(), req.Title, req.MeetingUrl),
+                ct);
+            return Results.Created($"/sessions/{result.Code}", result);
+        }
+        catch (ValidationException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+    }
+
+    private static async Task<IResult> ConnectMeet(
+        Guid id,
+        ConnectMeetRequest req,
+        ISender sender,
+        CancellationToken ct)
+    {
+        try
+        {
+            var result = await sender.Send(new ConnectMeetCommand(id, req.MeetingUrl), ct);
+            return Results.Ok(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Results.NotFound(new { error = ex.Message });
+        }
+        catch (ValidationException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+    }
+
+    private static async Task<IResult> MeetWebhook(
+        Guid id,
+        MeetWebhookRequest req,
+        HttpRequest http,
+        IConfiguration config,
+        ISender sender,
+        CancellationToken ct)
+    {
+        // Shared-secret check when MEETING_BOT_WEBHOOK_SECRET is configured.
+        var expectedSecret = config["MeetingBot:WebhookSecret"];
+        if (!string.IsNullOrEmpty(expectedSecret) &&
+            !string.Equals(http.Headers["X-Meeting-Webhook-Secret"], expectedSecret, StringComparison.Ordinal))
+        {
+            return Results.Unauthorized();
+        }
+
+        try
+        {
+            var result = await sender.Send(
+                new IngestMeetingWebhookCommand(id, req.Type, req.Event, req.OffsetMs, req.Text, req.Language, req.BotId),
+                ct);
+            return Results.Ok(result);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return Results.NotFound(new { error = ex.Message });
+        }
+        catch (ValidationException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
     }
 
     private static async Task<IResult> CreateSession(
