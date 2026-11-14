@@ -82,6 +82,7 @@ jobs:
           key: ${{ secrets.VULTR_SSH_KEY }}
           script: |
             sudo mkdir -p /opt/levvy-web
+            sudo rm -rf /opt/levvy-web/.next /opt/levvy-web/public
             sudo tar -xzf /opt/levvy-web/web.tar.gz -C /opt/levvy-web
             sudo rm -f /opt/levvy-web/web.tar.gz
             sudo systemctl restart levvy-api levvy-web || true
