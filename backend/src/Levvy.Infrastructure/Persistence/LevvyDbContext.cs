@@ -11,6 +11,7 @@ public class LevvyDbContext : DbContext
 {
     public LevvyDbContext(DbContextOptions<LevvyDbContext> options) : base(options) { }
 
+    public DbSet<User> Users => Set<User>();
     public DbSet<Session> Sessions => Set<Session>();
     public DbSet<Participant> Participants => Set<Participant>();
     public DbSet<TranscriptSegment> TranscriptSegments => Set<TranscriptSegment>();
@@ -20,6 +21,11 @@ public class LevvyDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder b)
     {
+        b.Entity<User>(e =>
+        {
+            e.HasIndex(x => x.Email).IsUnique();
+            e.HasIndex(x => x.GoogleSub).IsUnique();
+        });
         b.Entity<Session>(e =>
         {
             e.HasIndex(x => x.Code).IsUnique();

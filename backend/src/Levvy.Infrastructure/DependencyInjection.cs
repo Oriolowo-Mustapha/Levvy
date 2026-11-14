@@ -2,6 +2,7 @@ using Hangfire;
 using Hangfire.PostgreSql;
 using Levvy.Application.Common.Interfaces;
 using Levvy.Infrastructure.Asr;
+using Levvy.Infrastructure.Authentication;
 using Levvy.Infrastructure.BackgroundJobs;
 using Levvy.Infrastructure.Llm;
 using Levvy.Infrastructure.Persistence;
@@ -47,8 +48,16 @@ public static class DependencyInjection
         });
 
         services.AddHttpClient("VultrS3");
+        services.AddHttpClient("GoogleAuth");
 
         services.AddScoped<ISessionRepository, SessionRepository>();
+        services.AddScoped<IUserRepository, UserRepository>();
+        services.AddSingleton<IPasswordHasher, PasswordHasher>();
+        services.AddSingleton<IJwtTokenGenerator, JwtTokenService>();
+        services.AddScoped<IGoogleAuthVerifier>(sp =>
+            new GoogleAuthVerifier(
+                sp.GetRequiredService<IHttpClientFactory>().CreateClient("GoogleAuth"),
+                sp.GetRequiredService<IConfiguration>()));
         services.AddScoped<IAudioStore>(sp =>
             new VultrAudioStore(
                 sp.GetRequiredService<IHttpClientFactory>().CreateClient("VultrS3"),
