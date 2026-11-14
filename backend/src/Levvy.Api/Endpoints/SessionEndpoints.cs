@@ -56,11 +56,24 @@ public static class SessionEndpoints
     private static async Task<IResult> ConnectMeet(
         Guid id,
         ConnectMeetRequest req,
+        HttpContext http,
         ISender sender,
+        ISessionRepository repo,
+        IJwtTokenGenerator jwt,
+        IUserRepository users,
+        IConfiguration config,
         CancellationToken ct)
     {
         try
         {
+            // Audit fix (C2): attaching a bot costs provider money — host only.
+            var session = await repo.GetWithTranscriptAsync(id, ct);
+            if (session is null)
+                return Results.NotFound(new { error = "Session not found." });
+
+            if (!await HostAccess.IsHostAuthorizedAsync(http, session, jwt, users, config, ct))
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+
             var result = await sender.Send(new ConnectMeetCommand(id, req.MeetingUrl), ct);
             return Results.Ok(result);
         }
@@ -209,11 +222,24 @@ public static class SessionEndpoints
 
     private static async Task<IResult> EndSession(
         Guid id,
+        HttpContext http,
         ISender sender,
+        ISessionRepository repo,
+        IJwtTokenGenerator jwt,
+        IUserRepository users,
+        IConfiguration config,
         CancellationToken ct)
     {
         try
         {
+            // Audit fix (C2): ending a session is destructive (kills live captions + LLM spend) — host only.
+            var session = await repo.GetWithTranscriptAsync(id, ct);
+            if (session is null)
+                return Results.NotFound(new { error = "Session not found." });
+
+            if (!await HostAccess.IsHostAuthorizedAsync(http, session, jwt, users, config, ct))
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+
             await sender.Send(new EndSessionCommand(id), ct);
             return Results.Ok(new { status = "ended", sessionId = id });
         }

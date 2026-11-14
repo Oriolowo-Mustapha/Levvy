@@ -34,11 +34,14 @@ public static class DependencyInjection
 
         services.AddDbContext<LevvyDbContext>(opt => opt.UseNpgsql(connString));
 
+        // Audit fix (H5-iii/M3): every named client gets an explicit timeout — the default 100s
+        // is a live-captioning killer when awaited inline in the WebSocket hot loop.
         services.AddHttpClient("Groq", http =>
         {
             var baseUrl = cfg["Groq:BaseUrl"] ?? cfg["GROQ_BASE_URL"] ?? "https://api.groq.com/openai/v1/";
             if (!baseUrl.EndsWith('/')) baseUrl += "/";
             http.BaseAddress = new Uri(baseUrl);
+            http.Timeout = TimeSpan.FromSeconds(30);
         });
 
         services.AddHttpClient("Deepgram", http =>
@@ -46,11 +49,22 @@ public static class DependencyInjection
             var baseUrl = cfg["Deepgram:BaseUrl"] ?? cfg["DEEPGRAM_BASE_URL"] ?? "https://api.deepgram.com/v1/";
             if (!baseUrl.EndsWith('/')) baseUrl += "/";
             http.BaseAddress = new Uri(baseUrl);
+            http.Timeout = TimeSpan.FromSeconds(30);
         });
 
-        services.AddHttpClient("VultrS3");
-        services.AddHttpClient("GoogleAuth");
-        services.AddHttpClient("MeetingBot");
+        services.AddHttpClient("VultrS3", http =>
+        {
+            // Large lecture recordings stream in both directions; allow generous time.
+            http.Timeout = TimeSpan.FromMinutes(10);
+        });
+        services.AddHttpClient("GoogleAuth", http =>
+        {
+            http.Timeout = TimeSpan.FromSeconds(10);
+        });
+        services.AddHttpClient("MeetingBot", http =>
+        {
+            http.Timeout = TimeSpan.FromSeconds(30);
+        });
 
         services.AddScoped<ISessionRepository, SessionRepository>();
         services.AddScoped<IUserRepository, UserRepository>();

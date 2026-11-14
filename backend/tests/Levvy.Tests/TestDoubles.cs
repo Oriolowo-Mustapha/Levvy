@@ -22,6 +22,22 @@ internal sealed class InMemorySessionRepository : ISessionRepository
     }
 
     public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
+
+    public Task<bool> AddSegmentIfMissingAsync(TranscriptSegment segment, CancellationToken ct)
+    {
+        var session = _sessions.FirstOrDefault(s => s.Id == segment.SessionId);
+        if (session is null)
+            return Task.FromResult(false);
+
+        var duplicate = session.Segments.Any(s =>
+            s.OffsetMs == segment.OffsetMs &&
+            string.Equals(s.Text, segment.Text, StringComparison.Ordinal));
+        if (duplicate)
+            return Task.FromResult(false);
+
+        session.Segments.Add(segment);
+        return Task.FromResult(true);
+    }
 }
 
 /// <summary>Shared IBackgroundJobScheduler spy that records enqueued jobs instead of running Hangfire.</summary>
@@ -31,6 +47,7 @@ internal sealed class SpyJobScheduler : IBackgroundJobScheduler
     public List<Guid> StudyPackSessionIds { get; } = new();
     public List<Guid> DispatchBotSessionIds { get; } = new();
     public List<Guid> MonitorBotSessionIds { get; } = new();
+    public List<int> MonitorBotAttempts { get; } = new();
 
     public string EnqueuePersistCaption(Guid sessionId, long offsetMs, string text, string sourceLanguage)
     {
@@ -50,9 +67,10 @@ internal sealed class SpyJobScheduler : IBackgroundJobScheduler
         return Guid.NewGuid().ToString("N");
     }
 
-    public string EnqueueMonitorOnlineClassBot(Guid sessionId)
+    public string EnqueueMonitorOnlineClassBot(Guid sessionId, int attempt = 0)
     {
         MonitorBotSessionIds.Add(sessionId);
+        MonitorBotAttempts.Add(attempt);
         return Guid.NewGuid().ToString("N");
     }
 }

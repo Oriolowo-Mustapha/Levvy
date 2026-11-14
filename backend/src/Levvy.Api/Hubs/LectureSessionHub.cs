@@ -9,6 +9,7 @@ using Levvy.Application.Events;
 using Levvy.Domain.Entities;
 using Levvy.Infrastructure.Llm;
 using MediatR;
+using Microsoft.Extensions.Configuration;
 
 namespace Levvy.Api.Hubs;
 
@@ -19,6 +20,7 @@ namespace Levvy.Api.Hubs;
 /// </summary>
 public sealed class LectureSessionHub(
     IServiceScopeFactory scopeFactory,
+    IConfiguration configuration,
     ILogger<LectureSessionHub> logger)
 {
     private readonly ConcurrentDictionary<Guid, SessionRoom> _rooms = new();
@@ -33,13 +35,13 @@ public sealed class LectureSessionHub(
     public async Task HandleConnectionAsync(
         HttpContext context,
         Guid sessionId,
+        string role,
         WebSocket socket,
         CancellationToken ct)
     {
         var lang = context.Request.Query["lang"].FirstOrDefault()?.Trim().ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(lang)) lang = "en";
 
-        var role = context.Request.Query["role"].FirstOrDefault()?.Trim().ToLowerInvariant() ?? "viewer";
         var sessionCode = context.Request.Query["code"].FirstOrDefault()?.Trim() ?? sessionId.ToString("N")[..6].ToUpperInvariant();
         var participantId = Guid.TryParse(context.Request.Query["participantId"].FirstOrDefault(), out var pid)
             ? pid
@@ -50,9 +52,18 @@ public sealed class LectureSessionHub(
         var room = _rooms.GetOrAdd(sessionId, _ => new SessionRoom(sessionId, sessionCode));
         room.Clients[connectionId] = client;
 
-        logger.LogInformation(
-            "WS client {ConnectionId} ({Role}, lang={Lang}) joined session {SessionId}",
-            connectionId, role, lang, sessionId);
+        if (role != "host")
+        {
+            logger.LogInformation(
+                "WS client {ConnectionId} (viewer, lang={Lang}) joined session {SessionId} (host claim not granted)",
+                connectionId, lang, sessionId);
+        }
+        else
+        {
+            logger.LogInformation(
+                "WS client {ConnectionId} (host, lang={Lang}) joined session {SessionId}",
+                connectionId, lang, sessionId);
+        }
 
         try
         {
@@ -107,6 +118,15 @@ public sealed class LectureSessionHub(
 
             if (result.MessageType == WebSocketMessageType.Binary)
             {
+                // Audit fix (C2): only the authorized host may stream audio into the hot pipe.
+                if (!string.Equals(client.Role, "host", StringComparison.OrdinalIgnoreCase))
+                {
+                    logger.LogWarning(
+                        "Non-host WS client {ConnectionId} attempted to stream audio to session {SessionId}; ignored.",
+                        client.ConnectionId, room.SessionId);
+                    continue;
+                }
+
                 await HandleAudioChunkAsync(room, messageStream, ct);
             }
             else if (result.MessageType == WebSocketMessageType.Text)
@@ -123,7 +143,14 @@ public sealed class LectureSessionHub(
         Stream audioChunk,
         CancellationToken ct)
     {
-        var chunkOffsetMs = room.ReserveNextChunkOffsetMs(defaultChunkDurationMs: 5000);
+        // Chunk duration is host-reported via chunk_meta when available; this default is the
+        // reservation fallback for MediaRecorder clients that don't send it. Configurable via
+        // ASR_CHUNK_DURATION_MS so the latency/accuracy trade-off can be tuned without redeploying code.
+        var chunkDurationMs = configuration["Asr:ChunkDurationMs"] ?? configuration["ASR_CHUNK_DURATION_MS"];
+        var defaultChunkDurationMs = long.TryParse(chunkDurationMs, out var parsed) && parsed is >= 1000 and <= 60_000
+            ? parsed
+            : 5000;
+        var chunkOffsetMs = room.ReserveNextChunkOffsetMs(defaultChunkDurationMs);
 
         using var scope = scopeFactory.CreateScope();
         var asr = scope.ServiceProvider.GetRequiredService<IAsrStreamer>();
@@ -232,6 +259,16 @@ public sealed class LectureSessionHub(
 
         if (type == "chunk_meta")
         {
+            // Audit fix (C2): offset/language steering is host-only, otherwise a viewer could
+            // rewrite the receipt timeline that every citation points into.
+            if (!string.Equals(sender.Role, "host", StringComparison.OrdinalIgnoreCase))
+            {
+                logger.LogWarning(
+                    "Non-host WS client {ConnectionId} attempted chunk_meta on session {SessionId}; ignored.",
+                    sender.ConnectionId, room.SessionId);
+                return;
+            }
+
             if (msg.OffsetMs.HasValue && msg.OffsetMs.Value >= 0)
                 room.SetNextChunkOffsetMs(msg.OffsetMs.Value);
             if (!string.IsNullOrWhiteSpace(msg.Lang))

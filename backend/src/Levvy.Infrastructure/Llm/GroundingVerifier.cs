@@ -104,6 +104,14 @@ public static class GroundingVerifier
             ? $"Lecture covered {ordered.Count} segments through {TimestampFormatter.FormatMmSs(ordered[^1].OffsetMs)}."
             : dto.Summary.Trim();
 
+        // Audit fix (M2): the summary is grounded too — it must cite at least one [mm:ss]
+        // timestamp that ties it back to the transcript, or it is replaced by a grounded
+        // default. An uncited summary would ship unverifiable claims under the Levvy name.
+        if (!System.Text.RegularExpressions.Regex.IsMatch(summary, @"\[\d{1,2}:\d{2}\]"))
+        {
+            summary = $"Lecture covered {ordered.Count} segments through {TimestampFormatter.FormatMmSs(ordered[^1].OffsetMs)}.";
+        }
+
         return new GeneratedStudyPackResult(summary, validCards);
     }
 
@@ -123,7 +131,8 @@ public static class GroundingVerifier
             var asMs = candidateOffsetMs * 1000;
             foreach (var seg in orderedTranscript)
             {
-                if (Math.Abs(seg.OffsetMs - asMs) <= 2000)
+                // Audit fix (M1): tightened from ±2000ms — receipts promise "the exact second".
+                if (Math.Abs(seg.OffsetMs - asMs) <= 500)
                     return seg.OffsetMs;
             }
         }
@@ -140,7 +149,8 @@ public static class GroundingVerifier
             }
         }
 
-        return (nearest is not null && minDiff <= 2000) ? nearest.OffsetMs : null;
+        // Audit fix (M1): tightened from ±2000ms — the PRD promises the exact second of audio.
+        return (nearest is not null && minDiff <= 500) ? nearest.OffsetMs : null;
     }
 
     private static IReadOnlyList<long> VerifyReceiptsAgainstTranscript(

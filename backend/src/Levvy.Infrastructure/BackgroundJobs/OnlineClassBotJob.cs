@@ -47,9 +47,14 @@ public sealed class OnlineClassBotJob(
         scheduler.EnqueueMonitorOnlineClassBot(sessionId);
     }
 
+    /// <summary>Test/back-compat overload: monitor with attempt counter starting at zero.</summary>
+    public Task MonitorAsync(Guid sessionId, CancellationToken ct) => MonitorAsync(sessionId, 0, ct);
+
     [AutomaticRetry(Attempts = 3)]
-    public async Task MonitorAsync(Guid sessionId, CancellationToken ct)
+    public async Task MonitorAsync(Guid sessionId, int attempt, CancellationToken ct)
     {
+        const int maxAttempts = 40; // 40 polls x 30s spacing ≈ 20 minutes of bot-join patience.
+
         var session = await repo.GetWithTranscriptAsync(sessionId, ct);
         if (session?.ExternalBotId is null || session.EndedAtUtc is not null)
             return;
@@ -58,6 +63,15 @@ public sealed class OnlineClassBotJob(
         if (session.BotStatus is "active" or "ended" or "failed")
             return;
 
+        // Audit fix (M6): cap the poll chain so a stuck bot can't poll forever / self-duplicate.
+        if (attempt >= maxAttempts)
+        {
+            logger.LogWarning(
+                "Online class bot for session {SessionId} still not in-call after {Attempts} polls; giving up monitoring.",
+                sessionId, attempt);
+            return;
+        }
+
         var status = await connector.GetBotStatusAsync(session.Id, session.ExternalBotId, ct);
 
         session.BotStatus = status.Status;
@@ -65,7 +79,7 @@ public sealed class OnlineClassBotJob(
 
         if (status.Status is "pending" or "joining")
         {
-            scheduler.EnqueueMonitorOnlineClassBot(sessionId);
+            scheduler.EnqueueMonitorOnlineClassBot(sessionId, attempt + 1);
             return;
         }
 

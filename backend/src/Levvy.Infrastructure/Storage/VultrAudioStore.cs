@@ -29,9 +29,11 @@ public class VultrAudioStore(HttpClient http, IConfiguration cfg) : IAudioStore
 
         if (IsS3Configured(out var endpoint, out var bucket, out var accessKey, out var secretKey))
         {
-            var bytes = await File.ReadAllBytesAsync(localPath, ct);
+            // Audit fix (H7): stream the local file straight into S3 (UNSIGNED-PAYLOAD SigV4)
+            // instead of materializing the whole recording in memory with ReadAllBytesAsync.
+            await using var fs = new FileStream(localPath, FileMode.Open, FileAccess.Read, FileShare.Read);
             using var resp = await SendSignedS3RequestAsync(
-                HttpMethod.Put, endpoint!, bucket!, key, accessKey!, secretKey!, bytes, ct);
+                HttpMethod.Put, endpoint!, bucket!, key, accessKey!, secretKey!, content: fs, ct);
             resp.EnsureSuccessStatusCode();
         }
 
@@ -52,16 +54,21 @@ public class VultrAudioStore(HttpClient http, IConfiguration cfg) : IAudioStore
 
         try
         {
-            using var resp = await SendSignedS3RequestAsync(
-                HttpMethod.Get, endpoint!, bucket!, key, accessKey!, secretKey!, payload: null, ct);
+            // Audit fix (H7): stream the S3 response through to the caller (ResponseHeadersRead)
+            // instead of buffering a lecture-length file into a byte[]/MemoryStream. The returned
+            // stream must be disposed by the caller, which releases the underlying connection.
+            var resp = await SendSignedS3RequestAsync(
+                HttpMethod.Get, endpoint!, bucket!, key, accessKey!, secretKey!, content: null, ct);
 
             if (resp.StatusCode == HttpStatusCode.NotFound)
+            {
+                resp.Dispose();
                 return null;
+            }
 
             resp.EnsureSuccessStatusCode();
 
-            var bytes = await resp.Content.ReadAsByteArrayAsync(ct);
-            return new MemoryStream(bytes, writable: false);
+            return await resp.Content.ReadAsStreamAsync(ct);
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
@@ -76,7 +83,7 @@ public class VultrAudioStore(HttpClient http, IConfiguration cfg) : IAudioStore
         string key,
         string accessKey,
         string secretKey,
-        byte[]? payload,
+        Stream? content,
         CancellationToken ct)
     {
         var host = endpoint.Replace("https://", "").Replace("http://", "").TrimEnd('/');
@@ -85,9 +92,11 @@ public class VultrAudioStore(HttpClient http, IConfiguration cfg) : IAudioStore
         var amzDate = now.ToString("yyyyMMddTHHmmssZ");
         var dateStamp = now.ToString("yyyyMMdd");
 
-        // GET signs an empty-body hash; PUT signs the actual payload hash.
-        var payloadHash = Convert.ToHexStringLower(SHA256.HashData(payload ?? []));
-        var canonicalUri = $"/{bucket}/{key}";
+        // Audit fix (Minor): PUT uses S3's UNSIGNED-PAYLOAD mode so the body can be streamed
+        // without hashing it into memory first; GET signs the empty-body hash. Keys are
+        // URI-encoded per RFC 3986 so exotic keys can't silently corrupt the canonical request.
+        var payloadHash = content is not null ? "UNSIGNED-PAYLOAD" : Convert.ToHexStringLower(SHA256.HashData([]));
+        var canonicalUri = $"/{bucket}/{UriEncodePath(key)}";
         var canonicalHeaders = $"host:{host}\nx-amz-content-sha256:{payloadHash}\nx-amz-date:{amzDate}\n";
         const string signedHeaders = "host;x-amz-content-sha256;x-amz-date";
         var canonicalRequest = $"{method.Method}\n{canonicalUri}\n\n{canonicalHeaders}\n{signedHeaders}\n{payloadHash}";
@@ -100,15 +109,30 @@ public class VultrAudioStore(HttpClient http, IConfiguration cfg) : IAudioStore
         var authHeader = $"AWS4-HMAC-SHA256 Credential={accessKey}/{credentialScope}, SignedHeaders={signedHeaders}, Signature={signature}";
 
         using var req = new HttpRequestMessage(method, $"https://{host}{canonicalUri}");
-        if (payload is not null)
+        if (content is not null)
         {
-            req.Content = new ByteArrayContent(payload);
+            req.Content = new StreamContent(content);
+            req.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/webm");
         }
         req.Headers.TryAddWithoutValidation("x-amz-date", amzDate);
         req.Headers.TryAddWithoutValidation("x-amz-content-sha256", payloadHash);
         req.Headers.TryAddWithoutValidation("Authorization", authHeader);
 
-        return await http.SendAsync(req, ct);
+        return await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+    }
+
+    /// <summary>RFC 3986 path-segment encoding (keeps '/' and unreserved characters).</summary>
+    private static string UriEncodePath(string value)
+    {
+        var sb = new StringBuilder(value.Length);
+        foreach (var ch in value)
+        {
+            if (char.IsAsciiLetterOrDigit(ch) || ch is '-' or '.' or '_' or '~' or '/')
+                sb.Append(ch);
+            else
+                sb.Append('%').Append(((int)ch).ToString("X2"));
+        }
+        return sb.ToString();
     }
 
     private bool IsS3Configured(

@@ -1,6 +1,9 @@
 # External Services
 
-Every outside service Levvy depends on, what it does, and where it plugs in. Secrets live in user-secrets or env vars, never in config files.
+Every outside service Levvy depends on, what it does, and where it plugs in.
+Secrets live in `.env` (never committed), user-secrets, or environment variables — never in config files or source.
+
+**Status as of 14 Nov 2026:** all integrations below are **implemented and wired**, not stubs.
 
 ---
 
@@ -8,7 +11,7 @@ Every outside service Levvy depends on, what it does, and where it plugs in. Sec
 
 **Website:** https://console.groq.com
 
-One vendor, two jobs. OpenAI-compatible REST endpoint, so one `HttpClient` handles both.
+One vendor, two jobs. OpenAI-compatible REST endpoint, so one `HttpClient` (named client `"Groq"`, 30s timeout) handles both.
 
 ### 1a. Speech to Text (live captions)
 
@@ -16,23 +19,23 @@ One vendor, two jobs. OpenAI-compatible REST endpoint, so one `HttpClient` handl
 |---|---|
 | Model | `whisper-large-v3-turbo` |
 | Endpoint | `POST /openai/v1/audio/transcriptions` (multipart) |
-| Use | Transcribes the live lecture audio in ~5-10s chunks. Each chunk's segments get the accumulated `chunkStartOffsetMs` added, which builds the receipt timeline every citation points into. |
+| Use | Transcribes the live lecture audio in ~5s chunks (configurable via `ASR_CHUNK_DURATION_MS`). Each chunk's segments get the accumulated `chunkStartOffsetMs` added, which builds the receipt timeline every citation points into. |
 | Code entry point | `Levvy.Infrastructure/Asr/GroqAsrStreamer.cs` → implements `IAsrStreamer` |
-| Config key | `Groq:AsrModel` (in `appsettings.json`, no secret) |
-| Secret | `Groq:ApiKey` via `dotnet user-secrets` |
-| Status | Stub, throws `NotImplementedException` until 14 Nov |
+| Config key | `Groq:AsrModel` (env `GROQ_ASR_MODEL`) |
+| Secret | `Groq:ApiKey` (env `GROQ_API_KEY`) |
+| Status | **Live.** Failover + circuit breaker in `ResilientAsrStreamer`. |
 
 ### 1b. LLM (translation + grounded answers + study pack)
 
 | | |
 |---|---|
-| Models | `gpt-oss-120b` (primary), `llama-3.3-70b-versatile` (fallback) |
+| Models | `gpt-oss-120b` (primary), `llama-3.3-70b-versatile` (fallback on HTTP error or timeout) |
 | Endpoint | `POST /openai/v1/chat/completions` |
-| Uses | 1. Per-segment subtitle translation into each viewer's preferred language. 2. "Ask Levvy" mid-lecture Q&A, grounded in the transcript only, under the cite-or-say-not-covered rule. 3. Post-class study pack: summary + flashcards, each item citing its recording offset. |
-| Code entry point | `Levvy.Infrastructure/Llm/GroqLlmClient.cs` → implements `ITranslator` and `ILlmAnswerer` |
+| Uses | 1. Per-segment subtitle translation into each viewer's preferred language. 2. "Ask Levvy" mid-lecture Q&A, grounded in the transcript only, under the cite-or-say-not-covered rule. 3. Post-class study pack: summary + flashcards, each item citing its recording offset (summary must carry a `[mm:ss]` citation or it is replaced by a grounded default). |
+| Code entry point | `Levvy.Infrastructure/Llm/GroqLlmClient.cs` → implements `ITranslator` and `ILlmAnswerer`; grounding enforced in `GroundingVerifier.cs` |
 | Config keys | `Groq:AnswerModel`, `Groq:FallbackModel`, `Groq:BaseUrl` |
 | Secret | `Groq:ApiKey` (same key serves STT and chat) |
-| Status | Stub, throws `NotImplementedException` until 14 Nov |
+| Status | **Live.** |
 
 ---
 
@@ -42,72 +45,105 @@ One vendor, two jobs. OpenAI-compatible REST endpoint, so one `HttpClient` handl
 
 | | |
 |---|---|
-| Use | Insurance. If Groq's Whisper endpoint degrades or rate-limits during the demo, Deepgram's true streaming API takes over. It only has to satisfy the same `IAsrStreamer` contract, so the swap is one class. |
-| Credit | $200 free credit, more than covers a 48h demo |
-| Code entry point | New class next to `GroqAsrStreamer`, same `IAsrStreamer` interface |
-| Secret | `Deepgram:ApiKey` via user-secrets |
-| Status | Not written yet. Only exists if Groq shows weakness |
+| Model | `nova-2` |
+| Use | Insurance. If Groq's Whisper endpoint degrades or rate-limits during the demo, Deepgram takes over. `ResilientAsrStreamer` picks the provider per config (`ASR_PROVIDER`) and falls back per chunk; after 3 consecutive primary failures it skips the primary for 60s (circuit breaker). |
+| Code entry point | `Levvy.Infrastructure/Asr/DeepgramAsrStreamer.cs` — same `IAsrStreamer` contract as Groq |
+| Secret | `Deepgram:ApiKey` (env `DEEPGRAM_API_KEY`) |
+| Status | **Live.** If no key is set, Deepgram failover silently disables. |
 
 ---
 
-## 3. Vultr (all infrastructure)
+## 3. Meeting-Bot Provider (Recall.ai-compatible, Mode A)
+
+| | |
+|---|---|
+| Use | Joins Google Meet/Zoom/Teams links as the "Levvy Note-Taker" bot: captures audio + live captions and posts them back via webhook into the same `CaptionFinalized` seam as the browser-tab hot pipe. |
+| Code entry point | `Levvy.Infrastructure/MeetingBots/GoogleMeetBotConnector.cs` → `IMeetingBotConnector`; lifecycle jobs in `OnlineClassBotJob.cs` (dispatch → monitor ≤40 polls × 30s); webhook validation via `MeetingBot:WebhookSecret` |
+| URL parsing | `Levvy.Application/Common/MeetingUrlParser.cs` — host-aware; only `meet.google.com`, `zoom.us`, `teams.microsoft.com` / `teams.live.com` (or their subdomains) are accepted |
+| Secret | `MeetingBot:ApiKey` (env `MEETING_BOT_API_KEY`), `MeetingBot:ApiBaseUrl`, `MeetingBot:WebhookSecret` |
+| Status | **Live.** Leave the API key empty to run Mode B (browser tab audio over `/ws/{sessionId}`); `/sessions/{id}/connect-meet` then reports `unconfigured` and the session stays Mode B. |
+
+---
+
+## 4. Vultr (all infrastructure)
 
 **Website:** https://www.vultr.com
 
 Three roles, covered by credits:
 
-### 3a. Vultr Compute
+### 4a. Vultr Compute
 
 | | |
 |---|---|
 | Use | Hosts the Levvy API (ASP.NET Core minimal APIs + WebSocket hub) for the demo. Attendees connect their browsers here. |
-| Code entry point | Publish `Levvy.Api` as a self-contained deploy |
-| Status | Provision on build day |
+| Code entry point | `.github/workflows/deploy-vultr.yml` — runs backend tests, publishes `Levvy.Api` self-contained, rsyncs to the VM, restarts the systemd service. |
+| Status | **Deploying on push to main.** |
 
-### 3b. Vultr Object Storage (S3-compatible)
-
-| | |
-|---|---|
-| Use | Stores the raw lecture recordings and the generated study packs. Every playable receipt ultimately resolves to a position in a recording stored here. |
-| Code entry point | `IAudioStore` interface (`SaveRecordingAsync` / `OpenRecordingAsync`), implemented in Infrastructure |
-| Secret | `Storage:AccessKey`, `Storage:SecretKey` via user-secrets; bucket name + endpoint in `appsettings.json` |
-| Status | Interface defined, implementation pending |
-
-### 3c. Vultr Managed Databases (PostgreSQL)
+### 4b. Vultr Object Storage (S3-compatible)
 
 | | |
 |---|---|
-| Use | Production persistence. The code already supports it: `Database:Provider` = `postgres` swaps SQLite for Npgsql. Same schema, no code change. |
-| Code entry point | `Program.cs` DbContext wiring; connection string `ConnectionStrings:Levvy` |
-| Status | SQLite carries local dev; provision Postgres when demo hosting is set up |
+| Use | Stores the raw lecture recordings. Every playable receipt ultimately resolves to a position in a recording stored here. Local-filesystem fallback under `AppContext.BaseDirectory/recordings` keeps dev/demo working without credentials. |
+| Code entry point | `Levvy.Infrastructure/Storage/VultrAudioStore.cs` → implements `IAudioStore`. Hand-rolled SigV4 (PUT streams the file with `UNSIGNED-PAYLOAD`; GET streams the response through with `ResponseHeadersRead`). |
+| Config | `Storage:Endpoint` (`ewr1.vultrobjects.com`), `Storage:Region`, `Storage:Bucket` |
+| Secret | `Storage:AccessKey`, `Storage:SecretKey` |
+| Status | **Live.** One caveat: the streamed-PUT signing mode should be verified once on a real deploy (no local object storage to test against). |
+
+### 4c. Vultr Managed Databases (PostgreSQL)
+
+| | |
+|---|---|
+| Use | The **only** persistence provider. Npgsql-only discipline is enforced through all merge cycles; migrations are additive. SQLite exists solely as the test fake. |
+| Code entry point | `Levvy.Infrastructure/Persistence/LevvyDbContext.cs` + `DependencyInjection.cs` (hard `UseNpgsql`); connection string from `DATABASE_URL` or `ConnectionStrings:Levvy`. Migrations run automatically at startup (`db.Database.Migrate()`). |
+| Secret | `DATABASE_URL` (env var on the compute instance) |
+| Status | **Live.** |
 
 ---
 
-## 4. GitHub (from the 14th only)
-
-**Website:** https://github.com
+## 5. Google Identity (Sign in with Google)
 
 | | |
 |---|---|
-| Use | Source hosting for the team. Per team rule: no init, no push, nothing online until build starts on 14 Nov. |
-| Auth | gh CLI credential helper already configured on this machine |
-| Identity | Certified07 <abdulsamadtofunmi01@gmail.com> |
-| Status | Intentionally absent until build day |
+| Use | `/auth/google` accepts a Google ID token, verifies it against the `tokeninfo` endpoint, and signs the user in or up. Audience (`aud`) is checked against `GOOGLE_CLIENT_ID` when configured — **the startup logs a loud warning in non-dev if the client id is missing**, because audience validation is then skipped. |
+| Code entry point | `Levvy.Infrastructure/Authentication/GoogleAuthVerifier.cs` → `IGoogleAuthVerifier`; consumed by `AuthEndpoints.cs` |
+| Secret | `Google:ClientId`, `Google:ClientSecret` |
+| Status | **Live.** Post-hackathon: move to local JWKS verification (Google deprecates `tokeninfo`). |
+
+---
+
+## 6. GitHub (Actions)
+
+| | |
+|---|---|
+| Use | CI (backend + frontend test/build) and CD — deploys `main` to Vultr. Tests gate deploys: a red `dotnet test` blocks release. |
+| Workflows | `.github/workflows/backend-ci.yml`, `frontend-ci.yml`, `deploy-vultr.yml` |
+| Auth | `GITHUB_TOKEN` + deploy secrets (`VULTR_HOST`, `VULTR_*`, `DEPLOY_KEY`) |
+| Status | **Live.** |
 
 ---
 
 ## Secrets map (single source of truth)
 
-| Secret | Where it goes | Set with |
+All keys are documented in `backend/.env.example`; copy it to `backend/.env` and fill in. The `DotEnvLoader` maps flat env keys to .NET hierarchical config automatically.
+
+| Env var | Feeds | Notes |
 |---|---|---|
-| `Groq:ApiKey` | GroqAsrStreamer + GroqLlmClient | `dotnet user-secrets set "Groq:ApiKey" "..."` |
-| `Deepgram:ApiKey` | fallback streamer (if needed) | user-secrets |
-| `Storage:AccessKey` / `Storage:SecretKey` | Vultr Object Storage impl | user-secrets |
-| `ConnectionStrings:Levvy` (prod) | Vultr Managed Postgres | env var on the compute instance |
+| `DATABASE_URL` | Npgsql / Hangfire storage | Vultr Managed Postgres |
+| `GROQ_API_KEY` | GroqAsrStreamer + GroqLlmClient | required |
+| `DEEPGRAM_API_KEY` | fallback ASR | optional |
+| `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY` / `STORAGE_BUCKET` / `STORAGE_ENDPOINT` | VultrAudioStore | optional — local fallback without them |
+| `JWT_SECRET` | JwtTokenService | **required ≥32 chars in non-dev; startup throws otherwise** |
+| `GOOGLE_CLIENT_ID` | GoogleAuthVerifier | warn if missing in non-dev |
+| `MEETING_BOT_API_KEY` / `MEETING_BOT_API_BASE_URL` / `MEETING_BOT_WEBHOOK_SECRET` | Meeting-bot Mode A | optional — Mode B fallback |
+| `CORS_ALLOWED_ORIGINS` | CORS policy | required in prod |
+| `WS_HOST_KEY` | WebSocket host-role escape hatch | optional |
+| `HANGFIRE_DASHBOARD_TOKEN` | `/jobs` dashboard access | required for non-loopback access |
+| `ASR_CHUNK_DURATION_MS` | live-caption chunking (default 5000) | optional |
 
 ## Dependency order if something fails
 
-1. Groq STT fails → Deepgram streaming behind `IAsrStreamer`
-2. Groq LLM fails → `Groq:FallbackModel` (llama-3.3-70b-versatile), same client
-3. Both AI providers fail → captions fall back to text-only mode is NOT an option; record a fixture-based offline demo as the safety net
-4. Vultr services are owned by us, so failure window is provisioning, not outages
+1. Groq STT fails → circuit breaker trips after 3 failures → Deepgram (same `IAsrStreamer` seam)
+2. Groq LLM fails → `Groq:FallbackModel` (`llama-3.3-70b-versatile`), same client, also on timeouts
+3. Both AI providers fail → captions stop; record a fixture-based offline demo as the safety net
+4. Meeting-bot provider fails → session stays Mode B (browser tab audio), demo unaffected
+5. Vultr services are owned by us, so the failure window is provisioning, not outages

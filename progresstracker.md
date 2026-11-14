@@ -18,6 +18,7 @@
 | Frontend Foundation (`api.ts`) | 🟢 Done | Typed Auth, Dashboard, Session REST + WebSocket client (`frontend/src/lib/api.ts`), design tokens (`globals.css`), `output: "standalone"` |
 | Frontend Pages | 🟡 In Progress (Frontend Dev) | Auth, User Dashboard, Landing/Join, Host Console, Viewer Workspace, Study Pack UI pages |
 | Vultr Infrastructure | 🟢 Provisioned | Compute (`64.177.55.161`), Managed Postgres, Object Storage (`levvy-recordings`), `levvy.tech` HTTPS/WSS |
+| Security & Reliability Audit Fixes | 🟢 Done | Full audit (14 Nov) → all backend findings fixed on `fix/audit-hardening`: host-role auth on `/ws` + `/end` + `/connect-meet`, identity-spoofing fix, JWT secret startup guard, rate limiting, CORS allow-list, token-gated Hangfire dashboard, HTTP timeouts, ASR circuit breaker, idempotent caption persistence, streamed S3 uploads/downloads, tighter receipt grounding (±500ms), bot-monitor attempt cap, env config (`backend/.env.example` section 7). Frontend audit items tracked separately with the frontend dev. |
 | Demo & Validation | ⚪ Not Started | 2 audio fixtures + 10 user convos/country + 5-min pitch rehearsal |
 
 ---
