@@ -4,8 +4,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Levvy.Infrastructure.Persistence;
 
 /// <summary>
-/// SQLite for the 48h build; Vultr Managed Postgres is a connection-string swap
-/// (UseNpgsql instead of UseSqlite, provider decided by config: Database:Provider).
+/// Persistence targets Vultr Managed PostgreSQL via Npgsql only (prod-first build).
+/// The connection string comes from ConnectionStrings:Levvy or the DATABASE_URL env var.
 /// </summary>
 public class LevvyDbContext : DbContext
 {
@@ -26,6 +26,11 @@ public class LevvyDbContext : DbContext
             e.HasMany(x => x.Segments).WithOne().HasForeignKey("SessionId");
             e.HasMany(x => x.Participants).WithOne().HasForeignKey("SessionId");
             e.HasMany(x => x.Questions).WithOne().HasForeignKey("SessionId");
+        });
+        b.Entity<TranscriptSegment>(e =>
+        {
+            // Receipt timeline queries always order by OffsetMs within a session
+            e.HasIndex(x => new { x.SessionId, x.OffsetMs });
         });
         b.Entity<Answer>(e => e.HasMany(x => x.Citations).WithOne().HasForeignKey("AnswerId"));
         b.Entity<StudyPack>(e => e.HasMany(x => x.Flashcards).WithOne().HasForeignKey("StudyPackId"));

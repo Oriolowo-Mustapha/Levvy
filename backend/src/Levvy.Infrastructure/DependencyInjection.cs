@@ -14,18 +14,23 @@ namespace Levvy.Infrastructure;
 
 public static class DependencyInjection
 {
+    /// <summary>
+    /// Fallback for local dev when neither ConnectionStrings:Levvy nor DATABASE_URL is set.
+    /// Persistence is Npgsql-only (Vultr Managed PostgreSQL in prod, local Postgres in dev).
+    /// </summary>
+    public const string DefaultConnectionString =
+        "Host=localhost;Port=5432;Database=levvy;Username=levvy;Password=levvy";
+
+    public static string ResolveConnectionString(IConfiguration cfg)
+        => cfg.GetConnectionString("Levvy")
+           ?? cfg["DATABASE_URL"]
+           ?? DefaultConnectionString;
+
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration cfg)
     {
-        var dbProvider = (cfg["Database:Provider"] ?? cfg["DATABASE_PROVIDER"] ?? "sqlite").Trim().ToLowerInvariant();
-        var connString = cfg.GetConnectionString("Levvy") ?? cfg["DATABASE_URL"] ?? "Data Source=levvy.db";
+        var connString = ResolveConnectionString(cfg);
 
-        services.AddDbContext<LevvyDbContext>(opt =>
-        {
-            if (dbProvider == "postgres")
-                opt.UseNpgsql(connString);
-            else
-                opt.UseSqlite(connString);
-        });
+        services.AddDbContext<LevvyDbContext>(opt => opt.UseNpgsql(connString));
 
         services.AddHttpClient("Groq", http =>
         {
@@ -69,21 +74,13 @@ public static class DependencyInjection
         services.AddScoped<ITranslator>(sp => sp.GetRequiredService<GroqLlmClient>());
         services.AddScoped<ILlmAnswerer>(sp => sp.GetRequiredService<GroqLlmClient>());
 
-        // --- Hangfire Background Services ---
+        // --- Hangfire Background Services (PostgreSql job storage, same DB as the app) ---
         services.AddHangfire(hangfireCfg =>
         {
             hangfireCfg.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
                        .UseSimpleAssemblyNameTypeSerializer()
-                       .UseRecommendedSerializerSettings();
-
-            if (dbProvider == "postgres" && !connString.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase))
-            {
-                hangfireCfg.UsePostgreSqlStorage(c => c.UseNpgsqlConnection(connString));
-            }
-            else
-            {
-                hangfireCfg.UseInMemoryStorage();
-            }
+                       .UseRecommendedSerializerSettings()
+                       .UsePostgreSqlStorage(c => c.UseNpgsqlConnection(connString));
         });
 
         services.AddHangfireServer(opt =>

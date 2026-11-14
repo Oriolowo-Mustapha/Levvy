@@ -42,7 +42,7 @@ Clean Architecture across 5 projects in `backend/Levvy.slnx`:
 |---|---|---|
 | `Levvy.Domain` | Core entities: `Session`, `Participant`, `TranscriptSegment`, `Question`, `Answer`, `AnswerCitation`, `StudyPack`, `Flashcard` | None |
 | `Levvy.Application` | MediatR commands/queries/events, FluentValidation validators, interfaces (`IAsrStreamer`, `ITranslator`, `ILlmAnswerer`, `ISessionRepository`, `IAudioStore`) | `Levvy.Domain`, MediatR, FluentValidation |
-| `Levvy.Infrastructure` | `LevvyDbContext` (EF Core: SQLite dev / Npgsql prod), `GroqAsrStreamer`, `GroqLlmClient`, S3-compatible `IAudioStore` | `Levvy.Application`, EF Core, Npgsql, Sqlite |
+| `Levvy.Infrastructure` | `LevvyDbContext` (EF Core: **Npgsql-only** — Vultr Managed Postgres in prod, local Postgres in dev), `GroqAsrStreamer`, `GroqLlmClient`, S3-compatible `IAudioStore` | `Levvy.Application`, EF Core, Npgsql |
 | `Levvy.Api` | Minimal API endpoints, `/ws/{sessionId}` WebSocket hub, DI wiring, health check | `Levvy.Application`, `Levvy.Infrastructure` |
 | `Levvy.Tests` | xUnit tests for DI pipeline, grounding (`cite-or-say-not-covered`), and timestamp offset math | `Levvy.Application`, `Levvy.Domain` |
 
