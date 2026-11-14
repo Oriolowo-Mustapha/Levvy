@@ -52,6 +52,8 @@ app.MapSwaggerEndpoints();
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "levvy-api" }))
    .WithTags("Health")
    .WithSummary("Health check endpoint");
+app.MapAuthEndpoints();
+app.MapUserEndpoints();
 app.MapSessionEndpoints();
 app.MapWebSocketEndpoints();
 

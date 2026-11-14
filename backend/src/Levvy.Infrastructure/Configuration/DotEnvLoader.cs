@@ -23,7 +23,13 @@ public static class DotEnvLoader
         ["STORAGE_REGION"] = "Storage__Region",
         ["STORAGE_BUCKET"] = "Storage__Bucket",
         ["STORAGE_ACCESS_KEY"] = "Storage__AccessKey",
-        ["STORAGE_SECRET_KEY"] = "Storage__SecretKey"
+        ["STORAGE_SECRET_KEY"] = "Storage__SecretKey",
+        ["JWT_SECRET"] = "Jwt__Secret",
+        ["JWT_ISSUER"] = "Jwt__Issuer",
+        ["JWT_AUDIENCE"] = "Jwt__Audience",
+        ["JWT_EXPIRY_MINUTES"] = "Jwt__ExpiryMinutes",
+        ["GOOGLE_CLIENT_ID"] = "Google__ClientId",
+        ["GOOGLE_CLIENT_SECRET"] = "Google__ClientSecret"
     };
 
     public static IReadOnlyDictionary<string, string> LoadFromDefaultLocations(string? startDirectory = null)

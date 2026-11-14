@@ -16,6 +16,7 @@ public sealed class JoinSessionCommandHandler(ISessionRepository repo)
         {
             Id = Guid.NewGuid(),
             SessionId = session.Id,
+            UserId = request.UserId,
             DisplayName = request.DisplayName.Trim(),
             PreferredLanguage = request.PreferredLanguage.Trim().ToLowerInvariant(),
             JoinedAtUtc = DateTime.UtcNow
