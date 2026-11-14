@@ -185,7 +185,11 @@ public class GroqLlmClient : ITranslator, ILlmAnswerer
         {
             return await SendChatCompletionAsync(apiKey, primaryModel, systemPrompt, userPrompt, jsonMode, temperature, ct);
         }
-        catch (HttpRequestException) when (!string.Equals(primaryModel, fallbackModel, StringComparison.OrdinalIgnoreCase))
+        // Audit fix (M3): fail over on HTTP errors AND on client-side timeouts (TaskCanceledException
+        // raised by the HttpClient 30s timeout, which is not a caller cancellation).
+        catch (Exception ex) when (
+            (ex is HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested)) &&
+            !string.Equals(primaryModel, fallbackModel, StringComparison.OrdinalIgnoreCase))
         {
             return await SendChatCompletionAsync(apiKey, fallbackModel, systemPrompt, userPrompt, jsonMode, temperature, ct);
         }

@@ -26,6 +26,12 @@ internal static class HttpUserResolver
         if (fromToken is not null)
             return fromToken;
 
+        // Audit fix (C1): if the client presented an Authorization header that failed validation,
+        // never fall back to client-supplied identity — that would let any caller claim any user.
+        if (!string.IsNullOrWhiteSpace(http.Request.Headers.Authorization.ToString()))
+            return null;
+
+        // No token at all: the demo/anonymous flow may still pass an explicit participant or user id.
         if (explicitUserId is not null && explicitUserId != Guid.Empty)
             return explicitUserId;
 

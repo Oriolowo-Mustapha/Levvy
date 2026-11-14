@@ -32,7 +32,13 @@ public static class DotEnvLoader
         ["GOOGLE_CLIENT_SECRET"] = "Google__ClientSecret",
         ["MEETING_BOT_API_KEY"] = "MeetingBot__ApiKey",
         ["MEETING_BOT_API_BASE_URL"] = "MeetingBot__ApiBaseUrl",
-        ["MEETING_BOT_WEBHOOK_SECRET"] = "MeetingBot__WebhookSecret"
+        ["MEETING_BOT_WEBHOOK_SECRET"] = "MeetingBot__WebhookSecret",
+
+        // Audit hardening (H1/H3/H4, H5 chunk config)
+        ["CORS_ALLOWED_ORIGINS"] = "Cors__AllowedOrigins",
+        ["WS_HOST_KEY"] = "Ws__HostKey",
+        ["HANGFIRE_DASHBOARD_TOKEN"] = "Hangfire__DashboardToken",
+        ["ASR_CHUNK_DURATION_MS"] = "Asr__ChunkDurationMs"
     };
 
     public static IReadOnlyDictionary<string, string> LoadFromDefaultLocations(string? startDirectory = null)

@@ -20,14 +20,8 @@ public sealed class CaptionPersistenceJob(
         string sourceLanguage,
         CancellationToken ct)
     {
-        var session = await repo.GetWithTranscriptAsync(sessionId, ct);
-        if (session is null)
-        {
-            logger.LogDebug("Session {SessionId} not found in DB while persisting caption at {OffsetMs}ms.", sessionId, offsetMs);
-            return;
-        }
-
-        session.Segments.Add(new TranscriptSegment
+        // Audit fix (H6): no full session-graph load, and dedup-safe on Hangfire retries.
+        var added = await repo.AddSegmentIfMissingAsync(new TranscriptSegment
         {
             Id = Guid.NewGuid(),
             SessionId = sessionId,
@@ -35,8 +29,13 @@ public sealed class CaptionPersistenceJob(
             Text = text,
             SourceLanguage = sourceLanguage,
             CreatedAtUtc = DateTime.UtcNow
-        });
+        }, ct);
 
-        await repo.SaveChangesAsync(ct);
+        if (!added)
+        {
+            logger.LogDebug(
+                "Duplicate caption segment for session {SessionId} at {OffsetMs}ms skipped (idempotent retry).",
+                sessionId, offsetMs);
+        }
     }
 }

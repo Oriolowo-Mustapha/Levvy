@@ -37,16 +37,11 @@ public class OnlineClassTests
     [InlineData("")]
     [InlineData("   ")]
     [InlineData("https://youtube.com/watch?v=dQw4w9WgXcQ")]
-    [InlineData("https://evil.example.com/meet.google.com")] // not a host match — contains check is fine for demo but URL host games are out of scope; still a platform string
+    [InlineData("https://evil.example.com/meet.google.com")] // lookalike host — must NOT pass (audit fix M7: host-aware parsing)
+    [InlineData("https://meet.google.com.evil.example.com/abc-defg-hij")] // subdomain-of-attacker trick
+    [InlineData("ftp://meet.google.com/abc-defg-hij")] // non-http(s) scheme
     public void MeetingUrlParser_rejects_unsupported_urls(string? url)
     {
-        // evil.example.com contains the substring but is a different host; document current behaviour:
-        if (url == "https://evil.example.com/meet.google.com")
-        {
-            Assert.True(MeetingUrlParser.TryGetPlatform(url, out _));
-            return;
-        }
-
         Assert.False(MeetingUrlParser.TryGetPlatform(url, out _));
     }
 

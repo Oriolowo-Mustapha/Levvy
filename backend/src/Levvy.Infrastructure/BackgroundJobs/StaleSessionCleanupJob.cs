@@ -15,20 +15,18 @@ public sealed class StaleSessionCleanupJob(
     [AutomaticRetry(Attempts = 2)]
     public async Task ExecuteAsync(CancellationToken ct)
     {
+        // Audit fix (Minor): single bulk UPDATE in SQL instead of loading every stale session
+        // into the change tracker just to stamp one column.
         var cutoff = DateTime.UtcNow.AddHours(-3);
-        var staleSessions = await db.Sessions
-            .Where(s => s.EndedAtUtc == null && s.StartedAtUtc < cutoff)
-            .ToListAsync(ct);
 
-        if (staleSessions.Count == 0)
+        var updated = await db.Sessions
+            .Where(s => s.EndedAtUtc == null && s.StartedAtUtc < cutoff)
+            .ExecuteUpdateAsync(set => set
+                .SetProperty(s => s.EndedAtUtc, DateTime.UtcNow), ct);
+
+        if (updated == 0)
             return;
 
-        foreach (var s in staleSessions)
-        {
-            s.EndedAtUtc = DateTime.UtcNow;
-        }
-
-        await db.SaveChangesAsync(ct);
-        logger.LogInformation("Closed {Count} stale live lecture sessions via Hangfire cleanup job.", staleSessions.Count);
+        logger.LogInformation("Closed {Count} stale live lecture sessions via Hangfire cleanup job.", updated);
     }
 }

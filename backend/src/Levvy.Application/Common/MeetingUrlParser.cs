@@ -3,6 +3,8 @@ namespace Levvy.Application.Common;
 /// <summary>
 /// Detects the supported online-class platform from a pasted meeting URL
 /// (plan.md Phase 2: meet.google.com, zoom.us, teams.microsoft.com).
+/// Host-aware: matches the URL authority (plus its subdomains), never raw substrings,
+/// so lookalike hosts like evil.example.com/meet.google.com are rejected.
 /// </summary>
 public static class MeetingUrlParser
 {
@@ -16,13 +18,19 @@ public static class MeetingUrlParser
         if (string.IsNullOrWhiteSpace(meetingUrl))
             return false;
 
-        var url = meetingUrl.Trim().ToLowerInvariant();
+        if (!Uri.TryCreate(meetingUrl.Trim(), UriKind.Absolute, out var uri) ||
+            (uri.Scheme != "https" && uri.Scheme != "http"))
+            return false;
 
-        if (url.Contains("meet.google.com"))
+        var host = uri.Host.ToLowerInvariant();
+
+        // Exact host or a subdomain of the real platform domain only.
+        if (host == "meet.google.com" || host.EndsWith(".meet.google.com", StringComparison.Ordinal))
             platform = GoogleMeet;
-        else if (url.Contains("zoom.us"))
+        else if (host == "zoom.us" || host.EndsWith(".zoom.us", StringComparison.Ordinal))
             platform = Zoom;
-        else if (url.Contains("teams.microsoft.com") || url.Contains("teams.live.com"))
+        else if (host == "teams.microsoft.com" || host.EndsWith(".teams.microsoft.com", StringComparison.Ordinal) ||
+                 host == "teams.live.com" || host.EndsWith(".teams.live.com", StringComparison.Ordinal))
             platform = Teams;
         else
             return false;

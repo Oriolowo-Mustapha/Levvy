@@ -17,6 +17,7 @@ public class SessionRepository(LevvyDbContext db) : ISessionRepository
                     .ThenInclude(a => a!.Citations)
             .Include(s => s.StudyPack)
                 .ThenInclude(p => p!.Flashcards)
+            .AsSplitQuery() // Audit fix (M5): avoid cartesian blow-up on the multi-include fan-out.
             .FirstOrDefaultAsync(s => s.Code == normalized, ct);
     }
 
@@ -30,7 +31,26 @@ public class SessionRepository(LevvyDbContext db) : ISessionRepository
                     .ThenInclude(a => a!.Citations)
             .Include(s => s.StudyPack)
                 .ThenInclude(p => p!.Flashcards)
+            .AsSplitQuery() // Audit fix (M5)
             .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
+    }
+
+    public async Task<bool> AddSegmentIfMissingAsync(TranscriptSegment segment, CancellationToken ct)
+    {
+        // Audit fix (H6): append-only write without materializing the whole session graph,
+        // and idempotent against Hangfire retries by (SessionId, OffsetMs, Text).
+        var exists = await db.TranscriptSegments
+            .AnyAsync(s =>
+                s.SessionId == segment.SessionId &&
+                s.OffsetMs == segment.OffsetMs &&
+                s.Text == segment.Text, ct);
+
+        if (exists)
+            return false;
+
+        db.TranscriptSegments.Add(segment);
+        await db.SaveChangesAsync(ct);
+        return true;
     }
 
     public async Task AddAsync(Session session, CancellationToken ct)
