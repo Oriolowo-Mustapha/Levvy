@@ -9,6 +9,8 @@ jobs:
   deploy:
     name: Build & Deploy Backend + Frontend to Vultr
     runs-on: ubuntu-latest
+    env:
+      VULTR_HOST_CHECK: ${{ secrets.VULTR_HOST }}
 
     steps:
       - name: Checkout repository
@@ -44,7 +46,7 @@ jobs:
           npm run build
 
       - name: Upload Backend Artifact to Vultr Compute
-        if: ${{ secrets.VULTR_HOST != '' }}
+        if: ${{ env.VULTR_HOST_CHECK != '' }}
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VULTR_HOST }}
@@ -55,7 +57,7 @@ jobs:
           strip_components: 2
 
       - name: Restart Services on Vultr Compute
-        if: ${{ secrets.VULTR_HOST != '' }}
+        if: ${{ env.VULTR_HOST_CHECK != '' }}
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VULTR_HOST }}
