@@ -15,6 +15,7 @@ import type { AuthResponseDto } from "../lib/api";
 export function AuthForm({ register = false }: { register?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState("");
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -26,7 +27,7 @@ export function AuthForm({ register = false }: { register?: boolean }) {
         register ? "/auth/register" : "/auth/login",
         { method: "POST", body: JSON.stringify(values) },
       );
-      saveAuth(data);
+      saveAuth(data, remember);
       router.push("/dashboard");
     } catch (e) {
       setError(errorText(e));
@@ -92,6 +93,23 @@ export function AuthForm({ register = false }: { register?: boolean }) {
               />
             </label>
             {error && <ErrorState message={error} />}
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 13,
+                color: "var(--muted)",
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+              />
+              Keep me signed in for 7 days
+            </label>
             <PrimaryActionButton disabled={busy}>
               {busy
                 ? "Just a moment…"
@@ -109,7 +127,7 @@ export function AuthForm({ register = false }: { register?: boolean }) {
           </p>
           <GoogleSignIn
             onSuccess={(data) => {
-              saveAuth(data);
+              saveAuth(data, remember);
               router.push("/dashboard");
             }}
           />

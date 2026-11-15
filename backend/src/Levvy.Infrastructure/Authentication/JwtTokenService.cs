@@ -112,7 +112,7 @@ public sealed class JwtTokenService(IConfiguration cfg) : IJwtTokenGenerator
     private static int ParseExpiryMinutes(IConfiguration cfg)
     {
         var raw = cfg["Jwt:ExpiryMinutes"] ?? cfg["JWT_EXPIRY_MINUTES"];
-        return int.TryParse(raw, out var mins) && mins > 0 ? mins : 120;
+        return int.TryParse(raw, out var mins) && mins > 0 ? mins : 10080; // 7 days default
     }
 
     private static string ComputeSignature(string signingInput, string secret)

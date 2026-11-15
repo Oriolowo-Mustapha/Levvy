@@ -206,8 +206,8 @@ export function AppHeader({
           aria-current={active === "dashboard" ? "page" : undefined}
           href="/dashboard"
         >
-          <Icon name="history" size={15} />
-          History
+          <Icon name="book" size={15} />
+          Dashboard
         </Link>
       </nav>
     </header>

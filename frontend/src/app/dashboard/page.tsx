@@ -15,6 +15,7 @@ import {
 } from "../../components/ui";
 import { SessionCard, StudyPackCard } from "../../components/lecture";
 import {
+  clearAuth,
   errorText,
   readAuth,
   request,
@@ -317,13 +318,7 @@ function DashboardContent() {
                             hasRecording={s.hasRecording}
                             ending={endingId === s.id}
                             onEnd={() => void endHostedSession(s.id)}
-                          >
-                            {s.hasStudyPack && (
-                              <Link href={`/session/${s.code}/pack`}>
-                                Study pack
-                              </Link>
-                            )}
-                          </SessionCard>
+                          />
                         ))}
                       </div>
                     </div>
@@ -395,8 +390,10 @@ function DashboardContent() {
                     type="button"
                     className="text-button"
                     onClick={() => {
-                      sessionStorage.removeItem("levvy.auth");
+                      clearAuth();
+                      setData(null);
                       router.push("/");
+                      router.refresh();
                     }}
                   >
                     Sign out

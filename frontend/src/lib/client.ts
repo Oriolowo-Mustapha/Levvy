@@ -1,16 +1,52 @@
 import { API_BASE, type AuthResponseDto } from "./api";
 
+const AUTH_STORAGE_KEY = "levvy.auth";
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function clearAuth() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(AUTH_STORAGE_KEY);
+  sessionStorage.removeItem(AUTH_STORAGE_KEY);
+}
 export function readAuth(): AuthResponseDto | null {
   if (typeof window === "undefined") return null;
   try {
-    const data = JSON.parse(sessionStorage.getItem("levvy.auth") || "null");
-    return data && Date.parse(data.expiresAtUtc) > Date.now() ? data : null;
+    const raw =
+      localStorage.getItem(AUTH_STORAGE_KEY) ||
+      sessionStorage.getItem(AUTH_STORAGE_KEY);
+    const data = JSON.parse(raw || "null");
+    if (data && Date.parse(data.expiresAtUtc) > Date.now()) {
+      return data;
+    }
+    clearAuth();
+    return null;
   } catch {
     return null;
   }
 }
-export function saveAuth(data: AuthResponseDto) {
-  sessionStorage.setItem("levvy.auth", JSON.stringify(data));
+export function saveAuth(data: AuthResponseDto, remember?: boolean) {
+  if (typeof window === "undefined") return;
+  const keepSignedIn =
+    remember ??
+    (localStorage.getItem(AUTH_STORAGE_KEY) !== null ||
+      sessionStorage.getItem(AUTH_STORAGE_KEY) === null);
+  const maxExpiry = Date.now() + SEVEN_DAYS_MS;
+  const serverExpiry = Date.parse(data.expiresAtUtc);
+  const capped =
+    Number.isFinite(serverExpiry) && serverExpiry > 0
+      ? Math.min(serverExpiry, maxExpiry)
+      : maxExpiry;
+  const payload = JSON.stringify({
+    ...data,
+    expiresAtUtc: new Date(capped).toISOString(),
+  });
+  if (keepSignedIn) {
+    localStorage.setItem(AUTH_STORAGE_KEY, payload);
+    sessionStorage.removeItem(AUTH_STORAGE_KEY);
+  } else {
+    sessionStorage.setItem(AUTH_STORAGE_KEY, payload);
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+  }
 }
 export function preference(key: string, fallback: string) {
   if (typeof window === "undefined") return fallback;

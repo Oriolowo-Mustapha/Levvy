@@ -28,6 +28,7 @@ public static class SessionEndpoints
         group.MapPost("/{code}/speak", SpeakText).WithSummary("Synthesize speech audio from text via Deepgram Aura TTS");
         group.MapPost("/{id:guid}/end", EndSession).WithSummary("End a live session and queue Study Pack generation");
         group.MapGet("/{code}/pack", GetStudyPack).WithSummary("Get generated Study Pack summary and flashcards");
+        group.MapPost("/{code}/pack/generate", GenerateStudyPackNow).WithSummary("Generate or regenerate the Study Pack and flashcards for a session");
         group.MapPost("/{id:guid}/audio", UploadAudio).WithSummary("Upload recorded session audio to object storage");
         group.MapGet("/{code}/audio", StreamAudio).WithSummary("Stream recorded session audio with range support");
 
@@ -523,6 +524,35 @@ public static class SessionEndpoints
     {
         var pack = await sender.Send(new GetStudyPackByCodeQuery(code), ct);
         return pack is not null ? Results.Ok(pack) : Results.NotFound(new { error = "Session not found." });
+    }
+
+    private static async Task<IResult> GenerateStudyPackNow(
+        string code,
+        ISender sender,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        var session = await sender.Send(new GetSessionByCodeQuery(code), ct);
+        if (session is null)
+            return Results.NotFound(new { error = "Session not found." });
+
+        var logger = loggerFactory.CreateLogger("Levvy.Api.GenerateStudyPackNow");
+        try
+        {
+            await sender.Send(new GenerateStudyPackCommand(session.Id), ct);
+            var pack = await sender.Send(new GetStudyPackByCodeQuery(code), ct);
+            return pack is not null ? Results.Ok(pack) : Results.NotFound(new { error = "Study pack not found." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogError(ex, "GenerateStudyPackNow configuration error for session {Code}", code);
+            return Results.Json(new { error = ex.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogError(ex, "GenerateStudyPackNow upstream LLM error for session {Code}", code);
+            return Results.Json(new { error = $"AI service error: {ex.Message}" }, statusCode: StatusCodes.Status502BadGateway);
+        }
     }
 
     private static async Task<IResult> UploadAudio(

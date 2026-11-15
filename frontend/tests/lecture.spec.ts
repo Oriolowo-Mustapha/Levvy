@@ -363,7 +363,7 @@ test("host uses a scoped ticket, captures decodable WebM, saves and ends", async
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByRole("button", { name: "End & save" }).click();
   await expect(
-    page.getByRole("link", { name: "Open study pack" }),
+    page.getByRole("link", { name: "Back to dashboard" }),
   ).toBeVisible();
 });
 

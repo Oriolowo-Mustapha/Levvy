@@ -497,13 +497,26 @@ function HostContent() {
             {ended ? "Lecture ended" : "End lecture"}
           </SecondaryActionButton>
           {ended && (
-            <Link
-              className="button primary"
-              href={`/session/${created.code}/pack`}
-            >
-              Open study pack
-              <PillDot />
-            </Link>
+            <section className="panel" aria-label="Lecture wrap-up">
+              <h2>Lecture wrapped up</h2>
+              <p className="muted">
+                Recording and transcript are saved. Students in room{" "}
+                <strong className="num">{created.code}</strong> can now access
+                their study pack and flashcards.
+              </p>
+              <div className="pill-switch" style={{ marginTop: 12 }}>
+                <Link className="button primary" href="/dashboard">
+                  Back to dashboard
+                  <PillDot />
+                </Link>
+                <Link
+                  className="button secondary"
+                  href={`/session/${created.code}`}
+                >
+                  View session
+                </Link>
+              </div>
+            </section>
           )}
         </aside>
         <dialog

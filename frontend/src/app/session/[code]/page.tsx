@@ -254,8 +254,16 @@ function SessionContent({ code }: { code: string }) {
               <Icon name="book" size={15} />
             </span>
             <span>
-              <strong>Study pack</strong>
-              <small>Summary and flashcards after class</small>
+              <strong>
+                {lecture.session && !lecture.session.isLive
+                  ? "Open study pack & flashcards"
+                  : "Study pack"}
+              </strong>
+              <small>
+                {lecture.session && !lecture.session.isLive
+                  ? "Lecture ended — summary & flashcards"
+                  : "Summary and flashcards after class"}
+              </small>
             </span>
             <Icon name="arrow" size={15} />
           </Link>

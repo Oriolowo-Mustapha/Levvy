@@ -8,6 +8,8 @@ import {
   EmptyState,
   ErrorState,
   LoadingState,
+  PillDot,
+  PrimaryActionButton,
 } from "../../../../components/ui";
 import {
   AudioPlaybackControl,
@@ -44,6 +46,7 @@ export default function StudyPackPage({
   const { code } = use(params);
   const [pack, setPack] = useState<StudyPackResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
   const [active, setActive] = useState<number | null>(null);
   const play = useRef<(ms: number) => void>(() => {});
@@ -59,6 +62,21 @@ export default function StudyPackPage({
         setError(errorText(e));
     } finally {
       setLoading(false);
+    }
+  }
+  async function generateNow() {
+    setGenerating(true);
+    setError("");
+    try {
+      const generated = await request<StudyPackResponse>(
+        `${roomPath(code)}/pack/generate`,
+        { method: "POST" },
+      );
+      setPack(generated);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setGenerating(false);
     }
   }
   useEffect(() => {
@@ -103,7 +121,22 @@ export default function StudyPackPage({
         {loading && (
           <LoadingState>Gathering your study materials…</LoadingState>
         )}
-        {error && <ErrorState message={error} retry={() => void load()} />}
+        {error && (
+          <>
+            <ErrorState message={error} retry={() => void load()} />
+            <div className="pill-switch" style={{ marginTop: 12 }}>
+              <PrimaryActionButton
+                disabled={generating}
+                onClick={() => void generateNow()}
+              >
+                {generating
+                  ? "Generating study pack…"
+                  : "Generate study pack & flashcards"}
+                <PillDot />
+              </PrimaryActionButton>
+            </div>
+          </>
+        )}
         {pack && (
           <>
             <AudioPlaybackControl
@@ -138,8 +171,21 @@ export default function StudyPackPage({
               </div>
               {!pack.flashcards.length && (
                 <EmptyState title="No flashcards yet">
-                  Check back after the lecture has ended and the study pack is
-                  generated.
+                  <p>
+                    Generate your summary and flashcards directly from the
+                    lecture transcript.
+                  </p>
+                  <div className="pill-switch" style={{ marginTop: 12 }}>
+                    <PrimaryActionButton
+                      disabled={generating}
+                      onClick={() => void generateNow()}
+                    >
+                      {generating
+                        ? "Generating…"
+                        : "Generate study pack & flashcards"}
+                      <PillDot />
+                    </PrimaryActionButton>
+                  </div>
                 </EmptyState>
               )}
             </section>
