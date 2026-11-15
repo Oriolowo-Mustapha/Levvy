@@ -153,15 +153,11 @@ function SessionContent({ code }: { code: string }) {
                   }}
                 />
               }
-              lines={lecture.lines.map((item) => {
+              lines={lecture.lines.flatMap((item) => {
                 const translatedText =
-                  lecture.translations[`${language}:${item.offsetMs}`];
-                return {
-                  ...item,
-                  text:
-                    translatedText ??
-                    (language === lecture.sourceLanguage ? item.text : "…"),
-                };
+                  lecture.translations[`${language}:${item.offsetMs}`] ??
+                  (language === lecture.sourceLanguage ? item.text : undefined);
+                return translatedText ? [{ ...item, text: translatedText }] : [];
               })}
               size={size}
               onPlay={onPlay}

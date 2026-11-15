@@ -283,7 +283,7 @@ function HostContent() {
                     ? "Voice detected"
                     : recorder.recording
                       ? "Listening for speech…"
-                      : "Press Start recording when you begin"}
+                      : "Microphone is off"}
               </span>
             </div>
 
@@ -333,7 +333,7 @@ function HostContent() {
                 <button
                   type="button"
                   className="button secondary"
-                  aria-label="Stop and save recording"
+                  aria-label="Stop & save recording"
                   disabled={
                     busy ||
                     ended ||
