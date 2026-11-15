@@ -79,7 +79,8 @@ public sealed class IngestMeetingWebhookCommandHandler(
                 return new IngestMeetingWebhookResult("ok");
 
             case "event" when normalizedEvent is "call_ended" or "completed" or "done"
-                or "bot.completed" or "complete":
+                or "bot.completed" or "complete" or "ended" or "analyzing"
+                or "transcribing" or "bot.ended":
                 session.BotStatus = "ended";
                 await repo.SaveChangesAsync(ct);
                 // Ends the session -> SessionEnded -> Hangfire StudyPackGenerationJob (cited notes)

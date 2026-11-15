@@ -85,6 +85,7 @@ builder.Services.AddRateLimiter(opt =>
 
 // 2. Register Clean Architecture layers (Application CQRS/Events + Infrastructure EF/Groq/S3/Hangfire)
 builder.Services.AddApplication();
+builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(LectureSessionHub).Assembly));
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<LectureSessionHub>();
 builder.Services.AddSingleton(TimeProvider.System);

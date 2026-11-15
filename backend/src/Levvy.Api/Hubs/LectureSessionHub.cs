@@ -283,6 +283,15 @@ public sealed class LectureSessionHub(
         }
     }
 
+    /// <summary>Notifies all connected clients in a room that the session has ended.</summary>
+    public async Task BroadcastSessionEndedAsync(Guid sessionId, CancellationToken ct = default)
+    {
+        if (!_rooms.TryGetValue(sessionId, out var room))
+            return;
+
+        await BroadcastJsonAsync(room, new { type = "session_ended" }, ct);
+    }
+
     private static async Task BroadcastToHostsAsync(SessionRoom room, object payload, CancellationToken ct)
     {
         foreach (var client in room.Clients.Values.Where(c => c.Role == "host"))
@@ -438,4 +447,11 @@ public sealed class LectureSessionHub(
             // Ignore disconnected socket send failure
         }
     }
+}
+
+/// <summary>Broadcasts session-ended notifications to connected WebSocket clients immediately.</summary>
+public sealed class SessionEndedHubNotifier(LectureSessionHub hub) : INotificationHandler<SessionEnded>
+{
+    public Task Handle(SessionEnded notification, CancellationToken ct)
+        => hub.BroadcastSessionEndedAsync(notification.SessionId, ct);
 }

@@ -120,7 +120,7 @@ public class OnlineClassTests
     }
 
     [Fact]
-    public async Task OnlineClassBotJob_monitor_reschedules_while_joining_and_stops_when_active()
+    public async Task OnlineClassBotJob_monitor_reschedules_while_joining_or_active_and_ends_session_when_ended()
     {
         var (mediator, repo, scheduler, connector) = BuildMediator();
         var created = await mediator.Send(new ConnectOnlineClassCommand(Guid.NewGuid(), "Bio 101", "https://meet.google.com/abc-defg-hij"));
@@ -137,12 +137,21 @@ public class OnlineClassTests
         Assert.Equal("joining", session!.BotStatus);
         Assert.Single(scheduler.MonitorBotSessionIds);
 
-        // Bot in-call -> stop polling
+        // Bot in-call -> keep monitoring so missed webhooks still end the session
         scheduler.MonitorBotSessionIds.Clear();
         connector.QueueStatus = new MeetingBotStatusResult("active", IsActive: true);
         await job.MonitorAsync(created.SessionId, CancellationToken.None);
         session = await repo.GetWithTranscriptAsync(created.SessionId, CancellationToken.None);
         Assert.Equal("active", session!.BotStatus);
+        Assert.Single(scheduler.MonitorBotSessionIds);
+
+        // Bot ended -> stop polling and end the session
+        scheduler.MonitorBotSessionIds.Clear();
+        connector.QueueStatus = new MeetingBotStatusResult("ended", IsActive: false);
+        await job.MonitorAsync(created.SessionId, CancellationToken.None);
+        session = await repo.GetWithTranscriptAsync(created.SessionId, CancellationToken.None);
+        Assert.Equal("ended", session!.BotStatus);
+        Assert.NotNull(session.EndedAtUtc);
         Assert.Empty(scheduler.MonitorBotSessionIds);
     }
 

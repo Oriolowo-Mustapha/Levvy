@@ -89,6 +89,13 @@ export function useLecture(
           if (disposed || typeof event.data !== "string") return;
           try {
             const msg = JSON.parse(event.data);
+            if (msg?.type === "session_ended") {
+              ended = true;
+              setConnection("Session ended");
+              socket.current?.close();
+              void refresh().catch(() => {});
+              return;
+            }
             if (
               msg?.type === "asr_status" &&
               ["processing", "ready", "error"].includes(msg.state)

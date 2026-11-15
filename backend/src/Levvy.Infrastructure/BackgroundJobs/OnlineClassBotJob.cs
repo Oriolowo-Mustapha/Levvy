@@ -1,5 +1,7 @@
 using Hangfire;
+using Levvy.Application.Commands;
 using Levvy.Application.Common.Interfaces;
+using MediatR;
 using Microsoft.Extensions.Logging;
 
 namespace Levvy.Infrastructure.BackgroundJobs;
@@ -7,14 +9,14 @@ namespace Levvy.Infrastructure.BackgroundJobs;
 /// <summary>
 /// Hangfire worker for the online-class bot lifecycle (plan.md Phase 2, Mode A):
 /// dispatches the "Levvy Note-Taker" bot through IMeetingBotConnector, then polls its
-/// status every 30s via MonitorAsync until the bot is in-call, the call ends, or it fails.
-/// Webhook events (call_ended / captions) drive the rest of the lifecycle.
+/// status every 30s via MonitorAsync while joining or active until the call ends or fails.
 /// </summary>
 public sealed class OnlineClassBotJob(
     ISessionRepository repo,
     IMeetingBotConnector connector,
     IBackgroundJobScheduler scheduler,
-    ILogger<OnlineClassBotJob> logger)
+    ILogger<OnlineClassBotJob> logger,
+    ISender? sender = null)
 {
     [AutomaticRetry(Attempts = 3)]
     public async Task DispatchAsync(Guid sessionId, CancellationToken ct)
@@ -53,21 +55,21 @@ public sealed class OnlineClassBotJob(
     [AutomaticRetry(Attempts = 3)]
     public async Task MonitorAsync(Guid sessionId, int attempt, CancellationToken ct)
     {
-        const int maxAttempts = 40; // 40 polls x 30s spacing ≈ 20 minutes of bot-join patience.
+        const int maxAttempts = 360; // 360 polls x 30s spacing ≈ 3 hours of bot monitoring.
 
         var session = await repo.GetWithTranscriptAsync(sessionId, ct);
         if (session?.ExternalBotId is null || session.EndedAtUtc is not null)
             return;
 
-        // Terminal or in-call states are webhook-driven; only keep polling while pending/joining.
-        if (session.BotStatus is "active" or "ended" or "failed")
+        // Terminal states require no further polling.
+        if (session.BotStatus is "ended" or "failed")
             return;
 
         // Audit fix (M6): cap the poll chain so a stuck bot can't poll forever / self-duplicate.
         if (attempt >= maxAttempts)
         {
             logger.LogWarning(
-                "Online class bot for session {SessionId} still not in-call after {Attempts} polls; giving up monitoring.",
+                "Online class bot for session {SessionId} still not ended after {Attempts} polls; giving up monitoring.",
                 sessionId, attempt);
             return;
         }
@@ -77,10 +79,23 @@ public sealed class OnlineClassBotJob(
         session.BotStatus = status.Status;
         await repo.SaveChangesAsync(ct);
 
-        if (status.Status is "pending" or "joining")
+        if (status.Status is "pending" or "joining" or "active")
         {
             scheduler.EnqueueMonitorOnlineClassBot(sessionId, attempt + 1);
             return;
+        }
+
+        if (status.Status == "ended")
+        {
+            if (sender is not null)
+            {
+                await sender.Send(new EndSessionCommand(session.Id), ct);
+            }
+            else if (session.EndedAtUtc is null)
+            {
+                session.EndedAtUtc = DateTime.UtcNow;
+                await repo.SaveChangesAsync(ct);
+            }
         }
 
         logger.LogInformation(
