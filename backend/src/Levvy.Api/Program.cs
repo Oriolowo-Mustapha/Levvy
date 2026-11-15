@@ -8,6 +8,7 @@ using Levvy.Application;
 using Levvy.Infrastructure;
 using Levvy.Infrastructure.Configuration;
 using Levvy.Infrastructure.Persistence;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
@@ -88,6 +89,11 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<LectureSessionHub>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<Levvy.Infrastructure.Authentication.WebSocketTicketStore>();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+});
+
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
@@ -98,6 +104,7 @@ using (var scope = app.Services.CreateScope())
     db.Database.Migrate();
 }
 
+app.UseForwardedHeaders();
 app.UseCors();
 // Audit fix (H1): activate the rate limiter registered above.
 app.UseRateLimiter();
