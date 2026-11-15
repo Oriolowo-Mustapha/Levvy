@@ -43,6 +43,8 @@ function DashboardContent() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [saved, setSaved] = useState(false);
+  const [endingId, setEndingId] = useState<string | null>(null);
+  const [endError, setEndError] = useState("");
   const [busy, setBusy] = useState(false);
   const [botTitle, setBotTitle] = useState("");
   const [botUrl, setBotUrl] = useState("");
@@ -128,22 +130,34 @@ function DashboardContent() {
       setBotBusy(false);
     }
   }
-  const sessions = data
-    ? [
-        ...new Map(
-          [...data.hostedSessions, ...data.attendedSessions].map((s) => [
-            s.id,
-            s,
-          ]),
-        ).values(),
-      ]
+  async function endHostedSession(sessionId: string) {
+    setEndingId(sessionId);
+    setEndError("");
+    try {
+      await request(`/sessions/${sessionId}/end`, { method: "POST" });
+      await load();
+    } catch (e) {
+      setEndError(errorText(e));
+    } finally {
+      setEndingId(null);
+    }
+  }
+  const matchesFilterAndQuery = (s: UserDashboardDto["hostedSessions"][number]) =>
+    (filter === "all" || (filter === "live" ? s.isLive : !s.isLive)) &&
+    `${s.title} ${s.code}`.toLowerCase().includes(query.toLowerCase());
+  const hostedSessions = data
+    ? [...data.hostedSessions]
         .sort((a, b) => Date.parse(b.startedAtUtc) - Date.parse(a.startedAtUtc))
-        .filter(
-          (s) =>
-            (filter === "all" || (filter === "live" ? s.isLive : !s.isLive)) &&
-            `${s.title} ${s.code}`.toLowerCase().includes(query.toLowerCase()),
-        )
+        .filter(matchesFilterAndQuery)
     : [];
+  const hostedIds = new Set((data?.hostedSessions ?? []).map((s) => s.id));
+  const attendedSessions = data
+    ? [...data.attendedSessions]
+        .filter((s) => !hostedIds.has(s.id))
+        .sort((a, b) => Date.parse(b.startedAtUtc) - Date.parse(a.startedAtUtc))
+        .filter(matchesFilterAndQuery)
+    : [];
+  const totalVisible = hostedSessions.length + attendedSessions.length;
   return (
     <>
       <AppHeader active="dashboard" />
@@ -262,7 +276,7 @@ function DashboardContent() {
                 <section>
                   <div className="section-heading">
                     <h2>Your lectures</h2>
-                    <span>{sessions.length} in your workspace</span>
+                    <span>{totalVisible} in your workspace</span>
                   </div>
                   <div className="search-row">
                     <label className="search-input">
@@ -284,23 +298,65 @@ function DashboardContent() {
                       <option value="ended">Past lectures</option>
                     </select>
                   </div>
-                  <div className="session-grid">
-                    {sessions.map((s) => (
-                      <SessionCard
-                        key={s.id}
-                        title={s.title}
-                        code={s.code}
-                        live={s.isLive}
-                      >
-                        {s.hasStudyPack && (
-                          <Link href={`/session/${s.code}/pack`}>
-                            Study pack
-                          </Link>
-                        )}
-                      </SessionCard>
-                    ))}
-                  </div>
-                  {!sessions.length && (
+                  {endError && <ErrorState message={endError} />}
+                  {hostedSessions.length > 0 && (
+                    <div style={{ marginBottom: 24 }}>
+                      <div className="section-heading">
+                        <h3>Hosted by you</h3>
+                        <span>{hostedSessions.length} lecturer rooms</span>
+                      </div>
+                      <div className="session-grid">
+                        {hostedSessions.map((s) => (
+                          <SessionCard
+                            key={s.id}
+                            title={s.title}
+                            code={s.code}
+                            live={s.isLive}
+                            hosted
+                            participantCount={s.participantCount}
+                            hasRecording={s.hasRecording}
+                            ending={endingId === s.id}
+                            onEnd={() => void endHostedSession(s.id)}
+                          >
+                            {s.hasStudyPack && (
+                              <Link href={`/session/${s.code}/pack`}>
+                                Study pack
+                              </Link>
+                            )}
+                          </SessionCard>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {attendedSessions.length > 0 && (
+                    <div>
+                      {hostedSessions.length > 0 && (
+                        <div className="section-heading">
+                          <h3>Attended lectures</h3>
+                          <span>{attendedSessions.length} joined</span>
+                        </div>
+                      )}
+                      <div className="session-grid">
+                        {attendedSessions.map((s) => (
+                          <SessionCard
+                            key={s.id}
+                            title={s.title}
+                            code={s.code}
+                            live={s.isLive}
+                            participantCount={s.participantCount}
+                            hasRecording={s.hasRecording}
+                          >
+                            {s.hasStudyPack && (
+                              <Link href={`/session/${s.code}/pack`}>
+                                Study pack
+                              </Link>
+                            )}
+                          </SessionCard>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {totalVisible === 0 && (
                     <EmptyState title="Your next lecture is waiting">
                       Join a room or host a lecture to start your history.
                     </EmptyState>

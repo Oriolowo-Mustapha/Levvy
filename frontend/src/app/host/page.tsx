@@ -28,7 +28,11 @@ import {
   storePreference,
   uploadAudio,
 } from "../../lib/client";
-import { formatMmSs, type CreateSessionResponse } from "../../lib/api";
+import {
+  formatMmSs,
+  type CreateSessionResponse,
+  type SessionSummaryResponse,
+} from "../../lib/api";
 
 export default function HostPage() {
   return (
@@ -58,6 +62,30 @@ function HostContent() {
   const lecture = useLecture(created?.code || "", target, "host");
   const recorder = useRecorder(lecture.send, source);
   const transcriptBox = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (created) return;
+    const codeParam = new URLSearchParams(window.location.search)
+      .get("code")
+      ?.trim()
+      .toUpperCase();
+    if (!codeParam) return;
+    let cancelled = false;
+    void request<SessionSummaryResponse>(
+      `/sessions/${encodeURIComponent(codeParam)}`,
+    )
+      .then((summary) => {
+        if (cancelled) return;
+        setCreated({ sessionId: summary.id, code: summary.code });
+        setTitle(summary.title);
+        setEnded(!summary.isLive);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(errorText(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [created]);
   useEffect(() => {
     const el = transcriptBox.current;
     if (!el) return;

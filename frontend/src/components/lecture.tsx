@@ -408,13 +408,32 @@ export function SessionCard({
   title,
   code,
   live,
+  hosted = false,
+  participantCount,
+  hasRecording,
+  ending = false,
+  onEnd,
   children,
 }: {
   title: string;
   code: string;
   live?: boolean;
+  hosted?: boolean;
+  participantCount?: number;
+  hasRecording?: boolean;
+  ending?: boolean;
+  onEnd?: () => void;
   children?: ReactNode;
 }) {
+  const primaryHref =
+    hosted && live ? `/host?code=${encodeURIComponent(code)}` : `/session/${code}`;
+  const primaryLabel = hosted
+    ? live
+      ? "Open host console"
+      : "View lecture"
+    : live
+      ? "Join lecture"
+      : "Revisit";
   return (
     <article className="session-card">
       <div className="session-card-top">
@@ -422,16 +441,38 @@ export function SessionCard({
           <span />
           {live ? "In progress" : "Ended"}
         </span>
-        <span className="num muted">{code}</span>
+        <span className="num muted">
+          {hosted ? "Hosted · " : ""}
+          {code}
+        </span>
       </div>
       <h3>
-        <Link href={`/session/${code}`}>{title}</Link>
+        <Link href={primaryHref}>{title}</Link>
       </h3>
+      {(typeof participantCount === "number" || hasRecording) && (
+        <p className="muted" style={{ fontSize: 13, margin: 0 }}>
+          {typeof participantCount === "number"
+            ? `${participantCount} ${participantCount === 1 ? "student" : "students"}`
+            : ""}
+          {typeof participantCount === "number" && hasRecording ? " · " : ""}
+          {hasRecording ? "Recording saved" : ""}
+        </p>
+      )}
       <div className="session-card-footer">
-        <Link className="button primary small" href={`/session/${code}`}>
-          {live ? "Join lecture" : "Revisit"}
+        <Link className="button primary small" href={primaryHref}>
+          {primaryLabel}
           <Icon name="arrow" size={14} />
         </Link>
+        {hosted && live && onEnd && (
+          <button
+            type="button"
+            className="button secondary small"
+            disabled={ending}
+            onClick={onEnd}
+          >
+            {ending ? "Ending…" : "End lecture"}
+          </button>
+        )}
         {children}
       </div>
     </article>
