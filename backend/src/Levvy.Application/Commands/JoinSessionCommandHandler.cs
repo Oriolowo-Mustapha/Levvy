@@ -22,8 +22,7 @@ public sealed class JoinSessionCommandHandler(ISessionRepository repo)
             JoinedAtUtc = DateTime.UtcNow
         };
 
-        session.Participants.Add(participant);
-        await repo.SaveChangesAsync(ct);
+        await repo.AddParticipantAsync(participant, ct);
 
         return new JoinSessionResult(participant.Id, session.Id);
     }

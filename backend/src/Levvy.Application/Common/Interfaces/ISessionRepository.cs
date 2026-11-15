@@ -15,4 +15,6 @@ public interface ISessionRepository
     /// segment with the same (SessionId, OffsetMs, Text) already exists (idempotent retries).
     /// </summary>
     Task<bool> AddSegmentIfMissingAsync(TranscriptSegment segment, CancellationToken ct);
+    Task AddParticipantAsync(Participant participant, CancellationToken ct);
+    Task AddQuestionAsync(Question question, CancellationToken ct);
 }

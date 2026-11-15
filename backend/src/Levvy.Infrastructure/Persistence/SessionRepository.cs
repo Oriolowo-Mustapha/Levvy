@@ -53,6 +53,18 @@ public class SessionRepository(LevvyDbContext db) : ISessionRepository
         return true;
     }
 
+    public async Task AddParticipantAsync(Participant participant, CancellationToken ct)
+    {
+        db.Participants.Add(participant);
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task AddQuestionAsync(Question question, CancellationToken ct)
+    {
+        db.Questions.Add(question);
+        await db.SaveChangesAsync(ct);
+    }
+
     public async Task AddAsync(Session session, CancellationToken ct)
     {
         await db.Sessions.AddAsync(session, ct);

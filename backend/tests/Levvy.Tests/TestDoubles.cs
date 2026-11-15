@@ -38,6 +38,20 @@ internal sealed class InMemorySessionRepository : ISessionRepository
         session.Segments.Add(segment);
         return Task.FromResult(true);
     }
+
+    public Task AddParticipantAsync(Participant participant, CancellationToken ct)
+    {
+        var session = _sessions.FirstOrDefault(s => s.Id == participant.SessionId);
+        session?.Participants.Add(participant);
+        return Task.CompletedTask;
+    }
+
+    public Task AddQuestionAsync(Question question, CancellationToken ct)
+    {
+        var session = _sessions.FirstOrDefault(s => s.Id == question.SessionId);
+        session?.Questions.Add(question);
+        return Task.CompletedTask;
+    }
 }
 
 /// <summary>Shared IBackgroundJobScheduler spy that records enqueued jobs instead of running Hangfire.</summary>

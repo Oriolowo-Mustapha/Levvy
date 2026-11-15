@@ -213,6 +213,11 @@ function DashboardContent() {
                     <h2>Send Levvy to a meeting</h2>
                     <span>Zoom · Google Meet · Teams</span>
                   </div>
+                  <p className="muted" style={{ marginBottom: 14 }}>
+                    Got a meeting link from your lecturer? Paste it below so
+                    Levvy joins to record, transcribe, translate, and build your
+                    study pack.
+                  </p>
                   <form onSubmit={dispatchBot}>
                     <div className="form-row">
                       <label>

@@ -57,8 +57,7 @@ public sealed class AskQuestionCommandHandler(
             }
         };
 
-        session.Questions.Add(question);
-        await repo.SaveChangesAsync(ct);
+        await repo.AddQuestionAsync(question, ct);
 
         await publisher.Publish(new QuestionAsked(session.Id, questionId, question.Text), ct);
 
