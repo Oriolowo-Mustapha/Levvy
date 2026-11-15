@@ -6,7 +6,7 @@ import {
   AppHeader,
   AudioVisualizer,
   ErrorState,
-  Icon,
+  PillDot,
   PrimaryActionButton,
 } from "./ui";
 import { request, errorText, saveAuth } from "../lib/client";
@@ -41,20 +41,12 @@ export function AuthForm({ register = false }: { register?: boolean }) {
         <section className="auth-intro">
           <AudioVisualizer hero />
           <h1>
-            More understanding.
-            <br />
-            <span>More possibility.</span>
+            {register ? "Create Your" : "Welcome Back"}
+            <span>{register ? "Workspace" : "to Levvy"}</span>
           </h1>
           <p>Your lectures, your language, your own pace.</p>
         </section>
         <section className="auth-card panel">
-          <span className="eyebrow">YOUR LEARNING STARTS HERE</span>
-          <h2>{register ? "A place for your ideas." : "Welcome back."}</h2>
-          <p>
-            {register
-              ? "Create your Levvy workspace."
-              : "Pick up where your curiosity left off."}
-          </p>
           <form onSubmit={submit}>
             {register && (
               <>
@@ -106,10 +98,10 @@ export function AuthForm({ register = false }: { register?: boolean }) {
                 : register
                   ? "Create account"
                   : "Sign in"}
-              <Icon name="arrow" size={17} />
+              <PillDot />
             </PrimaryActionButton>
           </form>
-          <p>
+          <p className="auth-switch">
             {register ? "Already have an account?" : "New to Levvy?"}{" "}
             <Link href={register ? "/login" : "/signup"}>
               {register ? "Sign in" : "Create an account"}

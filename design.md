@@ -1,5 +1,16 @@
 # Levvy — Design & Frontend Architecture Specification
 
+> **Visual direction update (Nov 2026):** the app UI now follows a monochrome
+> "AI translator & live captions" reference: soft grey canvas (`#f1f1f1`),
+> white cards, one near-black card (`#0b0b0b`) for translated captions with a
+> notched swap button, round icon buttons, pill controls, black pill CTAs,
+> Inter, and halftone dot visuals (glass orb on `/`, `/host`, auth; dot sphere
+> + pager-dot level meter on the live host screen). Tokens live in
+> `frontend/src/app/globals.css`. Where §1–§3 below (yellow accent, 4px
+> corners, editorial homepage sections, eyebrow-free rules aside) conflict
+> with that, the code and this note win; routes, components, API mapping and
+> the accessibility/honesty rules still apply.
+
 > **Art Direction:** `sentence-as-layout` (page, seed `698354275`) + `Editorial greeting` / `Open plane` (app screens, seed `878022159`), distilled via `design-taste-frontend` and verified against `web-design-guidelines` and `vercel-react-best-practices`.  
 > **Idea Statement:** *On this page, a live lecture’s timestamped caption strip (`▶ 43:12`) becomes the missing word inside the poster headline.*  
 > **Primary Live Interaction:** Instant room-code entry + live paired-language caption preview directly on `/`, and clickable audio-receipt playback (`offsetMs / 1000`) across every transcript, Q&A answer, and flashcard.

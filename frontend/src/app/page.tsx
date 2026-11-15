@@ -8,6 +8,7 @@ import {
   AudioVisualizer,
   Icon,
   LanguagePairSelector,
+  PillDot,
   PrimaryActionButton,
   RoomCodeInput,
   ErrorState,
@@ -70,107 +71,71 @@ function HomeContent() {
       setBusy(false);
     }
   }
+  async function paste() {
+    try {
+      const text = await navigator.clipboard.readText();
+      setCode(
+        text
+          .trim()
+          .toUpperCase()
+          .replace(/[^A-Z0-9-]/g, "")
+          .slice(0, 16),
+      );
+    } catch {
+      setError("Clipboard access was blocked. Type the room code instead.");
+    }
+  }
   return (
     <>
       <AppHeader active="home" />
       <main id="main" className="home-main">
-        <div className="home-topline">
-          <span className="eyebrow">
-            A LITTLE CLARITY. A WORLD OF POSSIBILITY.
-          </span>
-          <Link className="subtle-link" href="/dashboard">
-            <Icon name="history" size={16} />
-            Lecture history
-          </Link>
-        </div>
-        <div className="home-composition">
-          <section className="assistant-intro">
-            <div className="intro-kicker">
-              <span />
-              Made for every mind
+        <section className="home-hero">
+          <AudioVisualizer hero />
+          <h1>
+            Smart Lecture
+            <span>Assistant</span>
+          </h1>
+          <p>
+            Follow lectures with instant captions, translation, and answers
+            grounded in what was said.
+          </p>
+        </section>
+        <form className="composer-card" onSubmit={join}>
+          <LanguagePairSelector
+            source={source}
+            target={target}
+            onSource={changeSource}
+            onTarget={changeTarget}
+          />
+          <div className="entry-box">
+            <RoomCodeInput value={code} onChange={setCode} />
+            <div className="entry-box-tools">
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Paste room code"
+                title="Paste room code"
+                onClick={() => void paste()}
+              >
+                <Icon name="paste" size={16} />
+              </button>
+              <span className="entry-hint">No account needed</span>
             </div>
-            <AudioVisualizer hero />
-            <h1>
-              Your smart
-              <br />
-              lecture <span>assistant.</span>
-            </h1>
-            <p>
-              Follow every thought. Understand every word.
-              <br className="desktop-break" /> Live captions, translation and a
-              little help from AI.
-            </p>
-            <div className="feature-pills">
-              <span>
-                <Icon name="headphones" size={14} />
-                Real-time captions
-              </span>
-              <span>
-                <Icon name="spark" size={14} />
-                Grounded in your lecture
-              </span>
-            </div>
-          </section>
-          <section className="entry-card" aria-labelledby="entry-title">
-            <div className="card-top">
-              <span className="small-icon">
-                <Icon name="book" />
-              </span>
-              <span className="eyebrow">YOUR NEXT MOMENT OF CLARITY</span>
-              <span className="card-number">01 /</span>
-            </div>
-            <h2 id="entry-title">A seat in the conversation.</h2>
-            <p>
-              Choose your languages, enter your room code,
-              <br className="desktop-break" /> and make the lecture your own.
-            </p>
-            <LanguagePairSelector
-              source={source}
-              target={target}
-              onSource={changeSource}
-              onTarget={changeTarget}
-            />
-            <form onSubmit={join}>
-              <RoomCodeInput value={code} onChange={setCode} />
-              <div className="entry-hint">
-                <Icon name="headphones" size={15} />
-                <span>No account needed to follow along.</span>
-              </div>
-              {error && <ErrorState message={error} />}
-              <PrimaryActionButton type="submit" disabled={busy}>
-                {busy ? "Joining lecture…" : "Join a lecture"}
-                <Icon name="arrow" size={18} />
-              </PrimaryActionButton>
-            </form>
-            <div className="entry-divider">
-              <span>Leading the conversation?</span>
-            </div>
-            <Link className="button secondary host-link" href="/host">
-              <Icon name="mic" size={17} />
+          </div>
+          {error && <ErrorState message={error} />}
+          <div className="pill-switch">
+            <Link className="button secondary" href="/host">
               Host a lecture
-              <Icon name="plus" size={17} />
+              <Icon name="mic" size={15} />
             </Link>
-            <div className="privacy-note">
-              <span>◈</span>Your learning. Your language. Your pace.
-            </div>
-            <RecentLecture />
-          </section>
-        </div>
-        <div className="home-bottom">
-          <span>UNDERSTAND EVERY LECTURE.</span>
-          <span>
-            Never miss what matters.
-            <span className="bottom-line" />
-          </span>
-          <span>BUILT FOR BELONGING ↗</span>
-        </div>
+            <PrimaryActionButton type="submit" disabled={busy}>
+              {busy ? "Joining…" : "Join a lecture"}
+              <PillDot />
+            </PrimaryActionButton>
+          </div>
+        </form>
+        <RecentLecture />
       </main>
-      <footer className="site-footer">
-        <span>Levvy · A clearer way to learn</span>
-        <Link href="/dashboard">
-          Your accessibility preferences <Icon name="arrow" size={14} />
-        </Link>
-      </footer>
     </>
   );
 }

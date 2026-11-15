@@ -4,13 +4,13 @@ import Link from "next/link";
 import {
   AppHeader,
   BrowserReady,
-  CaptionSizeControl,
   ConnectionIndicator,
   ErrorState,
   Icon,
   LanguageSelector,
   LoadingState,
   RecordingStatus,
+  TextSizeButton,
 } from "../../../components/ui";
 import {
   AskLevvyPanel,
@@ -89,63 +89,29 @@ function SessionContent({ code }: { code: string }) {
       .find((line) => line.offsetMs <= ms);
     setActive(line?.offsetMs ?? null);
   }
+  const status =
+    lecture.session && !lecture.session.isLive
+      ? "Session ended"
+      : receiving
+        ? "Listening…"
+        : lecture.connection === "Connected"
+          ? "Waiting for captions"
+          : lecture.connection;
   return (
     <>
-      <AppHeader />
+      <AppHeader back={{ href: "/dashboard", label: "All lectures" }} />
       <main id="main" className="workspace">
-        <aside className="lecture-sidebar">
-          <Link className="subtle-link" href="/dashboard">
-            <Icon name="back" size={16} />
-            All lectures
-          </Link>
-          <span className="eyebrow">YOUR LECTURE SPACE</span>
-          <h2>{lecture.session?.title || "Lecture room"}</h2>
-          <span className="room-badge">ROOM {code}</span>
-          <nav aria-label="Lecture navigation">
-            <a className="selected" href="#captions">
-              <Icon name="headphones" />
-              Live captions
-            </a>
-            <a href="#transcript">
-              <Icon name="book" />
-              Transcript
-            </a>
-            <a href="#ask">
-              <Icon name="spark" />
-              Ask Levvy
-            </a>
-            <Link href={`/session/${code}/pack`}>
-              <Icon name="history" />
-              Study pack
-            </Link>
-          </nav>
-          <div className="sidebar-note">
-            Every word belongs to you.
-            <p>
-              {lecture.session
-                ? `${lecture.session.participantCount} participants`
-                : ""}
-            </p>
-            <ConnectionIndicator state={lecture.connection} />
-          </div>
-        </aside>
         <div className="lecture-main">
-          <div className="page-heading">
-            <div>
-              <span className="eyebrow">FOLLOW AT YOUR OWN PACE</span>
-              <h1>Room for understanding.</h1>
-            </div>
-            <RecordingStatus
-              state={
-                lecture.session && !lecture.session.isLive
-                  ? "Session ended"
-                  : receiving
-                    ? "Receiving captions"
-                    : lecture.connection === "Connected"
-                      ? "Waiting for captions"
-                      : lecture.connection
-              }
-            />
+          <div className="lecture-heading">
+            <RecordingStatus state={status} recording={receiving} />
+            <h1>{lecture.session?.title || "Lecture room"}</h1>
+            <p className="lecture-meta">
+              <span className="num">Room {code}</span>
+              {lecture.session && (
+                <span>{lecture.session.participantCount} participants</span>
+              )}
+              <ConnectionIndicator state={lecture.connection} />
+            </p>
           </div>
           {lecture.error && <ErrorState message={lecture.error} />}
           {!lecture.session && !lecture.error && <LoadingState />}
@@ -161,22 +127,31 @@ function SessionContent({ code }: { code: string }) {
               onPlay={onPlay}
               active={last?.offsetMs === active}
             />
-            <button
-              type="button"
-              className="caption-bridge"
-              aria-label="Change caption language"
-              onClick={() =>
-                document
-                  .querySelector<HTMLSelectElement>(
-                    "#caption-preferences select",
-                  )
-                  ?.focus()
-              }
-            >
-              <Icon name="swap" size={17} />
-            </button>
+            <div className="caption-bridge">
+              <button
+                type="button"
+                aria-label="Change caption language"
+                onClick={() =>
+                  document
+                    .querySelector<HTMLSelectElement>(".translated select")
+                    ?.focus()
+                }
+              >
+                <Icon name="swap" size={15} />
+              </button>
+            </div>
             <TranslatedTranscriptCard
               language={language}
+              languageControl={
+                <LanguageSelector
+                  caption="To"
+                  value={language}
+                  onChange={(v) => {
+                    setLanguage(v);
+                    storePreference("language", v);
+                  }}
+                />
+              }
               line={
                 translation && last
                   ? { ...last, text: translation }
@@ -189,6 +164,24 @@ function SessionContent({ code }: { code: string }) {
               active={last?.offsetMs === active}
             />
           </section>
+          <AskLevvyPanel
+            code={code}
+            onPlay={onPlay}
+            offsets={lecture.lines.map((line) => line.offsetMs)}
+            leading={<TextSizeButton value={size} onChange={setSize} />}
+            trailing={
+              <a
+                className="icon-button"
+                href="#transcript"
+                aria-label="Jump to full transcript"
+                title="Full transcript"
+              >
+                <Icon name="list" size={16} />
+              </a>
+            }
+          />
+        </div>
+        <aside className="lecture-rail" id="transcript">
           <AudioPlaybackControl
             code={code}
             onReady={(fn) => {
@@ -196,36 +189,20 @@ function SessionContent({ code }: { code: string }) {
             }}
             onActive={highlight}
           />
-          <div id="transcript">
-            <TranscriptFeed
-              lines={lecture.lines}
-              onPlay={onPlay}
-              active={active}
-              size={Math.max(20, size - 4)}
-            />
-          </div>
-        </div>
-        <aside className="lecture-rail">
-          <section className="preferences-card" id="caption-preferences">
-            <span className="eyebrow">MAKE IT YOURS</span>
-            <h2>A familiar language.</h2>
-            <LanguageSelector
-              value={language}
-              onChange={(v) => {
-                setLanguage(v);
-                storePreference("language", v);
-              }}
-            />
-            <CaptionSizeControl value={size} onChange={setSize} />
-            <p>
-              Language changes apply to incoming captions. Your lecture keeps
-              going.
-            </p>
-          </section>
-          <AskLevvyPanel
-            code={code}
+          <Link className="rail-link" href={`/session/${code}/pack`}>
+            <span className="icon-chip">
+              <Icon name="book" size={15} />
+            </span>
+            <span>
+              <strong>Study pack</strong>
+              <small>Summary and flashcards after class</small>
+            </span>
+            <Icon name="arrow" size={15} />
+          </Link>
+          <TranscriptFeed
+            lines={lecture.lines}
             onPlay={onPlay}
-            offsets={lecture.lines.map((line) => line.offsetMs)}
+            active={active}
           />
         </aside>
       </main>
