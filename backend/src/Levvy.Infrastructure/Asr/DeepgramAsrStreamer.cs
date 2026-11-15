@@ -78,11 +78,12 @@ public class DeepgramAsrStreamer : IAsrStreamer
             }
         }
 
+        var format = AudioFormatDetector.DetectFromSeekableStream(audioChunk);
         using var req = new HttpRequestMessage(HttpMethod.Post, query)
         {
             Content = new StreamContent(audioChunk)
         };
-        req.Content.Headers.ContentType = new MediaTypeHeaderValue("audio/webm");
+        req.Content.Headers.ContentType = new MediaTypeHeaderValue(format.ContentType);
         req.Headers.Authorization = new AuthenticationHeaderValue("Token", apiKey);
 
         using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);

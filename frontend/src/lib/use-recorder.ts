@@ -75,17 +75,22 @@ export function useRecorder(
         throw new Error(
           "Audio capture needs a supported browser and a secure HTTPS connection.",
         );
-      const mime = ["audio/webm;codecs=opus", "audio/webm"].find((t) =>
-        MediaRecorder.isTypeSupported(t),
-      );
-      if (!mime)
-        throw new Error(
-          "This browser cannot record WebM audio required by Levvy. Please use a current Chromium browser.",
-        );
+      const candidates = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4;codecs=mp4a.40.2",
+        "audio/mp4",
+        "audio/ogg;codecs=opus",
+      ];
+      const mime =
+        typeof MediaRecorder.isTypeSupported === "function"
+          ? candidates.find((t) => MediaRecorder.isTypeSupported(t)) || ""
+          : "";
+      const recorderOptions = mime ? { mimeType: mime } : undefined;
       if (source === "tab") {
         if (!navigator.mediaDevices.getDisplayMedia)
           throw new Error(
-            "Tab audio capture is not supported here. Choose microphone instead.",
+            "Tab audio capture is only available on desktop browsers. Choose Microphone or Upload instead.",
           );
         stream = await navigator.mediaDevices.getDisplayMedia({
           video: true,
@@ -97,11 +102,27 @@ export function useRecorder(
             "No shared audio. Select a browser tab and enable “Share tab audio”.",
           );
         }
-      } else
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true },
-          video: false,
-        });
+      } else {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true },
+            video: false,
+          });
+        } catch (err) {
+          if (
+            err instanceof DOMException &&
+            (err.name === "OverconstrainedError" ||
+              err.name === "ConstraintNotSatisfiedError")
+          ) {
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: true,
+              video: false,
+            });
+          } else {
+            throw err;
+          }
+        }
+      }
       if (!mounted.current) {
         stream.getTracks().forEach((t) => t.stop());
         return;
@@ -112,13 +133,14 @@ export function useRecorder(
       const analyser = context.createAnalyser();
       analyser.fftSize = 256;
       context.createMediaStreamSource(audioStream).connect(analyser);
-      const full = new MediaRecorder(audioStream, { mimeType: mime });
+      const full = new MediaRecorder(audioStream, recorderOptions);
+      const resolvedMime = full.mimeType || mime || "audio/webm";
       const parts: Blob[] = [];
       full.ondataavailable = (e) => {
         if (e.data.size) parts.push(e.data);
       };
       const done = new Promise<Blob>((resolve) => {
-        full.onstop = () => resolve(new Blob(parts, { type: mime }));
+        full.onstop = () => resolve(new Blob(parts, { type: resolvedMime }));
       });
       const r = {
         stream,
@@ -173,7 +195,7 @@ export function useRecorder(
       // Each ASR frame is an independently decodable WebM, rather than a headerless timeslice.
       function nextChunk() {
         if (r.stop || r.paused) return;
-        const chunk = new MediaRecorder(audioStream, { mimeType: mime });
+        const chunk = new MediaRecorder(audioStream, recorderOptions);
         r.chunk = chunk;
         const offset = r.offset + performance.now() - r.start;
         chunk.ondataavailable = (e) => {

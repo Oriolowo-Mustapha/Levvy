@@ -52,6 +52,19 @@ internal sealed class InMemorySessionRepository : ISessionRepository
         session?.Questions.Add(question);
         return Task.CompletedTask;
     }
+
+    public Task AddStudyPackAsync(StudyPack pack, CancellationToken ct)
+    {
+        var session = _sessions.FirstOrDefault(s => s.Id == pack.SessionId);
+        if (session is not null)
+        {
+            if (session.StudyPack is not null)
+                pack.Id = session.StudyPack.Id;
+            else
+                session.StudyPack = pack;
+        }
+        return Task.CompletedTask;
+    }
 }
 
 /// <summary>Shared IBackgroundJobScheduler spy that records enqueued jobs instead of running Hangfire.</summary>

@@ -1,3 +1,5 @@
+using Levvy.Application.Commands;
+using Levvy.Application.Common.Interfaces;
 using Levvy.Application.Queries;
 using Levvy.Domain.Entities;
 using Levvy.Infrastructure.Persistence;
@@ -238,5 +240,60 @@ public class SessionRepositoryTests
             db.Dispose();
             connection.Dispose();
         }
+    }
+
+    [Fact]
+    public async Task GenerateStudyPackCommandHandler_persists_pack_flashcards_and_parts_via_ef_core()
+    {
+        var (db, connection) = CreateOpenDb();
+        try
+        {
+            var session = NewSession("GEN-500");
+            session.Segments.Add(Segment(session.Id, 5_000, "First concept in distributed systems."));
+            session.Segments.Add(Segment(session.Id, 15_000, "Raft elects a leader using heartbeats."));
+            db.Sessions.Add(session);
+            db.SaveChanges();
+            db.ChangeTracker.Clear();
+
+            var repo = new SessionRepository(db);
+            var handler = new GenerateStudyPackCommandHandler(repo, new StubStudyPackAnswerer());
+
+            var firstPackId = await handler.Handle(new GenerateStudyPackCommand(session.Id), CancellationToken.None);
+            db.ChangeTracker.Clear();
+            var secondPackId = await handler.Handle(new GenerateStudyPackCommand(session.Id), CancellationToken.None);
+
+            Assert.NotEqual(Guid.Empty, firstPackId);
+            Assert.Equal(firstPackId, secondPackId);
+
+            db.ChangeTracker.Clear();
+            var loaded = await new GetStudyPackByCodeQueryHandler(repo)
+                .Handle(new GetStudyPackByCodeQuery("GEN-500"), CancellationToken.None);
+            Assert.NotNull(loaded);
+            Assert.NotEmpty(loaded!.Flashcards);
+            Assert.Single(loaded.Parts);
+            Assert.Contains("[00:05]", loaded.Summary);
+        }
+        finally
+        {
+            db.Dispose();
+            connection.Dispose();
+        }
+    }
+
+    private sealed class StubStudyPackAnswerer : ILlmAnswerer
+    {
+        public Task<(string Status, string Text, IReadOnlyList<long> ReceiptOffsetsMs)> AnswerFromTranscriptAsync(
+            string question,
+            IReadOnlyList<TranscriptSegment> transcriptSoFar,
+            CancellationToken ct)
+            => Task.FromResult<(string, string, IReadOnlyList<long>)>(("ok", "Answer", [5_000]));
+
+        public Task<GeneratedStudyPackResult> GenerateStudyPackAsync(
+            IReadOnlyList<TranscriptSegment> transcript,
+            CancellationToken ct)
+            => Task.FromResult(new GeneratedStudyPackResult(
+                "- Raft overview [00:05]",
+                [new GeneratedFlashcardItem("How does Raft pick a leader?", "Election timeout triggers a new term.", 15_000)],
+                [new GeneratedPartItem("Raft overview", 5_000)]));
     }
 }

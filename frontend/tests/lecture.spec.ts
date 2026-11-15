@@ -76,6 +76,20 @@ async function fixtures(page: Page, auth = false) {
       body = { ticket: "explicit-test-ticket" };
     else if (path === "/sessions" && method === "POST")
       body = { sessionId, code };
+    else if (path.endsWith("/audio/transcribe") && method === "POST")
+      body = {
+        sessionId,
+        recordingKey: `sessions/${sessionId}/recording.mp3`,
+        segmentCount: 1,
+        segments: [
+          {
+            offsetMs: 0,
+            text: "Uploaded lecture audio transcribed cleanly.",
+            sourceLanguage: "en",
+            isFinal: true,
+          },
+        ],
+      };
     else if (
       path.endsWith("/end") ||
       (path.endsWith("/audio") && method === "POST")
@@ -364,6 +378,33 @@ test("host uses a scoped ticket, captures decodable WebM, saves and ends", async
   await page.getByRole("button", { name: "End & save" }).click();
   await expect(
     page.getByRole("link", { name: "Back to dashboard" }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Host a lecture" }).click();
+  await expect(
+    page.getByRole("button", { name: "Create lecture room" }),
+  ).toBeVisible();
+});
+
+test("host upload audio source accepts and transcribes multi-format files", async ({
+  page,
+}) => {
+  await fixtures(page, true);
+  await page.goto("/host");
+  await page.getByLabel("Lecture title").fill("Uploaded audio lecture");
+  await page.getByRole("button", { name: "Create lecture room" }).click();
+  await page.getByRole("button", { name: /Upload/ }).click();
+  const transcribeReq = page.waitForRequest(
+    (r) =>
+      r.url().includes("/audio/transcribe") && r.method() === "POST",
+  );
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "lecture.mp3",
+    mimeType: "audio/mpeg",
+    buffer: Buffer.from([0x49, 0x44, 0x33, 0x04, 0x00, 0x00]),
+  });
+  await transcribeReq;
+  await expect(
+    page.getByText("Uploaded lecture audio transcribed cleanly."),
   ).toBeVisible();
 });
 

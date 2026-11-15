@@ -218,6 +218,27 @@ public sealed class LectureSessionHub(
         await BroadcastSegmentInternalAsync(room, seg, translator, mediator: null, ct);
     }
 
+    /// <summary>
+    /// Broadcasts transcript segments generated from an uploaded audio recording to any
+    /// connected viewers in the room (and translates into active viewer languages).
+    /// </summary>
+    public async Task BroadcastUploadedSegmentsAsync(
+        Guid sessionId,
+        IReadOnlyList<TranscriptSegment> segments,
+        CancellationToken ct)
+    {
+        if (segments.Count == 0 || !_rooms.TryGetValue(sessionId, out var room))
+            return;
+
+        using var scope = scopeFactory.CreateScope();
+        var translator = scope.ServiceProvider.GetRequiredService<ITranslator>();
+
+        foreach (var seg in segments.OrderBy(s => s.OffsetMs))
+        {
+            await BroadcastSegmentInternalAsync(room, seg, translator, mediator: null, ct);
+        }
+    }
+
     private async Task BroadcastSegmentInternalAsync(
         SessionRoom room,
         TranscriptSegment seg,

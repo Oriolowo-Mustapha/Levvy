@@ -402,6 +402,20 @@ public class AsrAndLlmTests
         Assert.Equal(2_507_000, result.Flashcards[0].SourceOffsetMs);
     }
 
+    [Theory]
+    [InlineData(new byte[] { 0x1A, 0x45, 0xDF, 0xA3, 0x9F }, "audio/webm", ".webm")]
+    [InlineData(new byte[] { 0x00, 0x00, 0x00, 0x18, (byte)'f', (byte)'t', (byte)'y', (byte)'p', (byte)'M', (byte)'4', (byte)'A', (byte)' ' }, "audio/mp4", ".m4a")]
+    [InlineData(new byte[] { (byte)'I', (byte)'D', (byte)'3', 0x04, 0x00 }, "audio/mpeg", ".mp3")]
+    [InlineData(new byte[] { (byte)'R', (byte)'I', (byte)'F', (byte)'F', 0x24, 0x00, 0x00, 0x00, (byte)'W', (byte)'A', (byte)'V', (byte)'E' }, "audio/wav", ".wav")]
+    [InlineData(new byte[] { (byte)'O', (byte)'g', (byte)'g', (byte)'S', 0x00 }, "audio/ogg", ".ogg")]
+    public void AudioFormatDetector_detects_container_magic_bytes(byte[] header, string expectedMime, string expectedExt)
+    {
+        var detected = AudioFormatDetector.DetectFromBytes(header);
+
+        Assert.Equal(expectedMime, detected.ContentType);
+        Assert.Equal(expectedExt, detected.Extension);
+    }
+
     private sealed class FakeHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> responder) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

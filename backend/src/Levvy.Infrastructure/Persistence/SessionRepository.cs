@@ -33,6 +33,8 @@ public class SessionRepository(LevvyDbContext db) : ISessionRepository
                     .ThenInclude(a => a!.Citations)
             .Include(s => s.StudyPack)
                 .ThenInclude(p => p!.Flashcards)
+            .Include(s => s.StudyPack)
+                .ThenInclude(p => p!.Parts)
             .AsSplitQuery() // Audit fix (M5)
             .FirstOrDefaultAsync(s => s.Id == sessionId, ct);
     }
@@ -65,6 +67,47 @@ public class SessionRepository(LevvyDbContext db) : ISessionRepository
     {
         db.Questions.Add(question);
         await db.SaveChangesAsync(ct);
+    }
+
+    public async Task AddStudyPackAsync(StudyPack pack, CancellationToken ct)
+    {
+        var existingId = await db.StudyPacks
+            .Where(p => p.SessionId == pack.SessionId)
+            .Select(p => (Guid?)p.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (existingId.HasValue)
+        {
+            pack.Id = existingId.Value;
+            return;
+        }
+
+        // Explicitly add the aggregate so EF Core tracks pre-assigned Guids as Added, not Modified.
+        db.StudyPacks.Add(pack);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            db.Entry(pack).State = EntityState.Detached;
+            foreach (var card in pack.Flashcards)
+                db.Entry(card).State = EntityState.Detached;
+            foreach (var part in pack.Parts)
+                db.Entry(part).State = EntityState.Detached;
+
+            var concurrentId = await db.StudyPacks
+                .Where(p => p.SessionId == pack.SessionId)
+                .Select(p => (Guid?)p.Id)
+                .FirstOrDefaultAsync(ct);
+            if (concurrentId.HasValue)
+            {
+                pack.Id = concurrentId.Value;
+                return;
+            }
+
+            throw;
+        }
     }
 
     public async Task AddAsync(Session session, CancellationToken ct)

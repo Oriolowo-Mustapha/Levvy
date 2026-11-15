@@ -49,10 +49,11 @@ public class GroqAsrStreamer : IAsrStreamer
 
         var model = _cfg["Groq:AsrModel"] ?? _cfg["GROQ_ASR_MODEL"] ?? "whisper-large-v3-turbo";
 
+        var format = AudioFormatDetector.DetectFromSeekableStream(audioChunk);
         using var form = new MultipartFormDataContent();
         var streamContent = new StreamContent(audioChunk);
-        streamContent.Headers.ContentType = new MediaTypeHeaderValue("audio/webm");
-        form.Add(streamContent, "file", "chunk.webm");
+        streamContent.Headers.ContentType = new MediaTypeHeaderValue(format.ContentType);
+        form.Add(streamContent, "file", $"chunk{format.Extension}");
         form.Add(new StringContent(model), "model");
         form.Add(new StringContent("verbose_json"), "response_format");
         form.Add(new StringContent("0"), "temperature");

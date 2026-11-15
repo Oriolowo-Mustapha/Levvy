@@ -43,8 +43,7 @@ public sealed class GenerateStudyPackCommandHandler(ISessionRepository repo, ILl
             }).ToList()
         };
 
-        session.StudyPack = pack;
-        await repo.SaveChangesAsync(ct);
+        await repo.AddStudyPackAsync(pack, ct);
 
         return pack.Id;
     }

@@ -100,6 +100,29 @@ export async function uploadAudio(id: string, blob: Blob) {
     body: blob,
   });
 }
+export async function uploadAndTranscribeAudio(
+  id: string,
+  file: File,
+  sourceLanguage = "auto",
+) {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  const query = new URLSearchParams({ sourceLang: sourceLanguage || "auto" });
+  return request<{
+    sessionId: string;
+    recordingKey: string;
+    segmentCount: number;
+    segments: Array<{
+      offsetMs: number;
+      text: string;
+      sourceLanguage?: string;
+      isFinal: boolean;
+    }>;
+  }>(`/sessions/${id}/audio/transcribe?${query.toString()}`, {
+    method: "POST",
+    body: form,
+  });
+}
 export async function speakSessionText(
   code: string,
   text: string,

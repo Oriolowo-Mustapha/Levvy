@@ -261,6 +261,14 @@ export function useLecture(
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
   }, []);
+  const appendLines = useCallback((incoming: TranscriptLineDto[]) => {
+    if (!incoming.length) return;
+    setLines((previous) => {
+      const merged = new Map(previous.map((line) => [line.offsetMs, line]));
+      incoming.forEach((line) => merged.set(line.offsetMs, line));
+      return [...merged.values()].sort((a, b) => a.offsetMs - b.offsetMs);
+    });
+  }, []);
   return {
     session,
     lines,
@@ -272,5 +280,6 @@ export function useLecture(
     sourceLanguage,
     asrStatus,
     drainAudio,
+    appendLines,
   };
 }

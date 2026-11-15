@@ -4,7 +4,9 @@ using Levvy.Application.Commands;
 using Levvy.Application.Common.Interfaces;
 using Levvy.Application.Queries;
 using Levvy.Domain.Entities;
+using Levvy.Infrastructure.Asr;
 using MediatR;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 
 namespace Levvy.Api.Endpoints;
@@ -29,7 +31,12 @@ public static class SessionEndpoints
         group.MapPost("/{id:guid}/end", EndSession).WithSummary("End a live session and queue Study Pack generation");
         group.MapGet("/{code}/pack", GetStudyPack).WithSummary("Get generated Study Pack summary and flashcards");
         group.MapPost("/{code}/pack/generate", GenerateStudyPackNow).WithSummary("Generate or regenerate the Study Pack and flashcards for a session");
-        group.MapPost("/{id:guid}/audio", UploadAudio).WithSummary("Upload recorded session audio to object storage");
+        group.MapPost("/{id:guid}/audio", UploadAudio)
+            .WithMetadata(new RequestSizeLimitAttribute(104_857_600))
+            .WithSummary("Upload recorded session audio to object storage");
+        group.MapPost("/{id:guid}/audio/transcribe", UploadAndTranscribeAudio)
+            .WithMetadata(new RequestSizeLimitAttribute(104_857_600))
+            .WithSummary("Upload and transcribe a recorded lecture audio file (WebM, MP3, WAV, M4A, OGG, FLAC)");
         group.MapGet("/{code}/audio", StreamAudio).WithSummary("Stream recorded session audio with range support");
 
         group.MapPost("/online-class", ConnectOnlineClass).WithSummary("Create a session bound to an online class (Meet/Zoom/Teams) and dispatch the Levvy Note-Taker bot");
@@ -553,6 +560,20 @@ public static class SessionEndpoints
             logger.LogError(ex, "GenerateStudyPackNow upstream LLM error for session {Code}", code);
             return Results.Json(new { error = $"AI service error: {ex.Message}" }, statusCode: StatusCodes.Status502BadGateway);
         }
+        catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "GenerateStudyPackNow timed out for session {Code}", code);
+            return Results.Json(
+                new { error = "Study pack generation timed out. Please try again." },
+                statusCode: StatusCodes.Status504GatewayTimeout);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "GenerateStudyPackNow unexpected failure for session {Code}", code);
+            return Results.Json(
+                new { error = $"Study pack generation failed: {ex.Message}" },
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
     }
 
     private static async Task<IResult> UploadAudio(
@@ -573,11 +594,106 @@ public static class SessionEndpoints
         if (!await HostAccess.IsHostAuthorizedAsync(http, session, jwt, users, config, ct))
             return Results.StatusCode(StatusCodes.Status403Forbidden);
 
-        var key = await audioStore.SaveRecordingAsync(id, request.Body, ct);
+        await using var uploadStream = await OpenUploadStreamAsync(request, ct);
+        if (uploadStream is null)
+            return Results.BadRequest(new { error = "No audio payload was provided." });
+
+        var key = await audioStore.SaveRecordingAsync(id, uploadStream, ct);
         session.RecordingKey = key;
         await repo.SaveChangesAsync(ct);
 
         return Results.Ok(new { sessionId = id, recordingKey = key });
+    }
+
+    private static async Task<IResult> UploadAndTranscribeAudio(
+        Guid id,
+        HttpRequest request,
+        HttpContext http,
+        IJwtTokenGenerator jwt,
+        IUserRepository users,
+        IConfiguration config,
+        ISessionRepository repo,
+        IAudioStore audioStore,
+        IAsrStreamer asr,
+        LectureSessionHub hub,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        var session = await repo.GetWithTranscriptAsync(id, ct);
+        if (session is null)
+            return Results.NotFound(new { error = "Session not found." });
+
+        if (!await HostAccess.IsHostAuthorizedAsync(http, session, jwt, users, config, ct))
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+        var sourceLanguage = request.Query["sourceLang"].FirstOrDefault()?.Trim() ?? "auto";
+
+        using var buffer = new MemoryStream();
+        await using (var uploadStream = await OpenUploadStreamAsync(request, ct))
+        {
+            if (uploadStream is not null)
+                await uploadStream.CopyToAsync(buffer, ct);
+        }
+
+        if (buffer.Length == 0)
+            return Results.BadRequest(new { error = "Uploaded audio file is empty." });
+
+        buffer.Position = 0;
+        var key = await audioStore.SaveRecordingAsync(id, buffer, ct);
+        session.RecordingKey = key;
+        await repo.SaveChangesAsync(ct);
+
+        var logger = loggerFactory.CreateLogger("Levvy.Api.UploadAndTranscribeAudio");
+        try
+        {
+            buffer.Position = 0;
+            var segments = await asr.TranscribeChunkAsync(buffer, chunkStartOffsetMs: 0, sourceLanguage, ct);
+            var ordered = segments.OrderBy(s => s.OffsetMs).ToList();
+
+            foreach (var seg in ordered)
+            {
+                seg.SessionId = session.Id;
+                await repo.AddSegmentIfMissingAsync(seg, ct);
+            }
+
+            await hub.BroadcastUploadedSegmentsAsync(session.Id, ordered, ct);
+
+            return Results.Ok(new
+            {
+                sessionId = id,
+                recordingKey = key,
+                segmentCount = ordered.Count,
+                segments = ordered.Select((s, idx) => new
+                {
+                    s.OffsetMs,
+                    s.Text,
+                    s.SourceLanguage,
+                    IsFinal = idx == ordered.Count - 1
+                })
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogError(ex, "UploadAndTranscribeAudio configuration error for session {SessionId}", id);
+            return Results.Json(new { error = ex.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogError(ex, "UploadAndTranscribeAudio ASR upstream error for session {SessionId}", id);
+            return Results.Json(new { error = $"Transcription failed: {ex.Message}" }, statusCode: StatusCodes.Status502BadGateway);
+        }
+    }
+
+    private static async Task<Stream?> OpenUploadStreamAsync(HttpRequest request, CancellationToken ct)
+    {
+        if (request.HasFormContentType)
+        {
+            var form = await request.ReadFormAsync(ct);
+            var file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
+            return file?.OpenReadStream();
+        }
+
+        return request.Body;
     }
 
     private static async Task<IResult> StreamAudio(
@@ -591,9 +707,11 @@ public static class SessionEndpoints
             return Results.NotFound(new { error = "Recording not found." });
 
         var stream = await audioStore.OpenRecordingAsync(session.RecordingKey, ct);
-        return stream is not null
-            ? Results.Stream(stream, "audio/webm", enableRangeProcessing: true)
-            : Results.NotFound(new { error = "Recording file unavailable." });
+        if (stream is null)
+            return Results.NotFound(new { error = "Recording file unavailable." });
+
+        var format = AudioFormatDetector.DetectFromSeekableStream(stream);
+        return Results.Stream(stream, format.ContentType, enableRangeProcessing: true);
     }
 
     private static async Task<IResult> SeedDemoSession(ISessionRepository repo, CancellationToken ct)

@@ -17,4 +17,5 @@ public interface ISessionRepository
     Task<bool> AddSegmentIfMissingAsync(TranscriptSegment segment, CancellationToken ct);
     Task AddParticipantAsync(Participant participant, CancellationToken ct);
     Task AddQuestionAsync(Question question, CancellationToken ct);
+    Task AddStudyPackAsync(StudyPack pack, CancellationToken ct);
 }

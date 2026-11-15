@@ -198,6 +198,7 @@ export function AppHeader({
           href="/host"
           aria-label="Host a lecture"
           title="Host a lecture"
+          onClick={() => window.dispatchEvent(new Event("levvy:new-host"))}
         >
           <Icon name="mic" size={17} />
         </Link>

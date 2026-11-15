@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   AppHeader,
   BrowserReady,
@@ -26,6 +27,7 @@ import {
   readAuth,
   request,
   storePreference,
+  uploadAndTranscribeAudio,
   uploadAudio,
 } from "../../lib/client";
 import {
@@ -34,14 +36,54 @@ import {
   type SessionSummaryResponse,
 } from "../../lib/api";
 
+const SUPPORTED_AUDIO_EXTENSIONS = /\.(webm|mp3|wav|m4a|mp4|ogg|flac)$/i;
+
 export default function HostPage() {
   return (
     <BrowserReady>
-      <HostContent />
+      <Suspense fallback={null}>
+        <HostRouter />
+      </Suspense>
     </BrowserReady>
   );
 }
-function HostContent() {
+
+function HostRouter() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const codeParam = searchParams.get("code")?.trim().toUpperCase() || "";
+  const [resetEpoch, setResetEpoch] = useState(0);
+
+  useEffect(() => {
+    function handleNewHost() {
+      setResetEpoch((n) => n + 1);
+      if (window.location.search) {
+        router.replace("/host");
+      }
+    }
+    window.addEventListener("levvy:new-host", handleNewHost);
+    return () => window.removeEventListener("levvy:new-host", handleNewHost);
+  }, [router]);
+
+  return (
+    <HostContent
+      key={`${codeParam || "new"}-${resetEpoch}`}
+      initialCode={codeParam}
+      onNewHost={() => {
+        setResetEpoch((n) => n + 1);
+        router.replace("/host");
+      }}
+    />
+  );
+}
+
+function HostContent({
+  initialCode,
+  onNewHost,
+}: {
+  initialCode: string;
+  onNewHost: () => void;
+}) {
   const [created, setCreated] = useState<CreateSessionResponse | null>(null);
   const [title, setTitle] = useState("");
   const [source, setSource] = useState(() => preference("source", "en"));
@@ -52,6 +94,7 @@ function HostContent() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [uploadNote, setUploadNote] = useState("");
   const [ended, setEnded] = useState(false);
   const signedIn = !!readAuth();
   const [hasPending, setHasPending] = useState(false);
@@ -62,16 +105,15 @@ function HostContent() {
   const lecture = useLecture(created?.code || "", target, "host");
   const recorder = useRecorder(lecture.send, source);
   const transcriptBox = useRef<HTMLDivElement>(null);
+  const tabSupported =
+    typeof navigator !== "undefined" &&
+    !!navigator.mediaDevices?.getDisplayMedia;
+
   useEffect(() => {
-    if (created) return;
-    const codeParam = new URLSearchParams(window.location.search)
-      .get("code")
-      ?.trim()
-      .toUpperCase();
-    if (!codeParam) return;
+    if (!initialCode) return;
     let cancelled = false;
     void request<SessionSummaryResponse>(
-      `/sessions/${encodeURIComponent(codeParam)}`,
+      `/sessions/${encodeURIComponent(initialCode)}`,
     )
       .then((summary) => {
         if (cancelled) return;
@@ -85,7 +127,7 @@ function HostContent() {
     return () => {
       cancelled = true;
     };
-  }, [created]);
+  }, [initialCode]);
   useEffect(() => {
     const el = transcriptBox.current;
     if (!el) return;
@@ -169,14 +211,36 @@ function HostContent() {
     if (!file || !created) return;
     setBusy(true);
     setError("");
+    setUploadNote("Uploading and transcribing audio…");
     try {
-      if (!file.type.startsWith("audio/webm"))
+      const isSupportedType =
+        !file.type ||
+        file.type.startsWith("audio/") ||
+        file.type === "video/webm" ||
+        file.type === "video/mp4";
+      if (!isSupportedType && !SUPPORTED_AUDIO_EXTENSIONS.test(file.name)) {
         throw new Error(
-          "The current playback contract supports WebM recordings. Choose an audio .webm file.",
+          "Choose a supported audio file (WebM, MP3, WAV, M4A, MP4, OGG, or FLAC).",
         );
-      await uploadAudio(created.sessionId, file);
+      }
+      const res = await uploadAndTranscribeAudio(created.sessionId, file, source);
+      if (Array.isArray(res.segments) && res.segments.length > 0) {
+        lecture.appendLines(
+          res.segments.map((s, idx) => ({
+            offsetMs: s.offsetMs,
+            text: s.text,
+            isCurrent: idx === res.segments.length - 1,
+          })),
+        );
+      }
       setSaved(true);
+      setUploadNote(
+        res.segmentCount > 0
+          ? `Saved "${file.name}" and transcribed ${res.segmentCount} segments.`
+          : `Saved "${file.name}". No spoken words detected in audio.`,
+      );
     } catch (e) {
+      setUploadNote("");
       setError(errorText(e));
     } finally {
       setBusy(false);
@@ -317,16 +381,16 @@ function HostContent() {
 
             {audioSource === "upload" ? (
               <label className="upload-label">
-                Choose WebM audio
+                Choose audio recording (WebM, MP3, WAV, M4A, OGG)
                 <input
                   type="file"
-                  accept="audio/webm,.webm"
+                  accept="audio/*,.webm,.mp3,.wav,.m4a,.mp4,.ogg,.flac"
                   disabled={busy || ended}
                   onChange={(e) => void upload(e.target.files?.[0])}
                 />
                 <small>
-                  Upload saves playback audio. This endpoint does not transcribe
-                  files.
+                  {uploadNote ||
+                    "Uploads playback audio and transcribes it into captions & study packs."}
                 </small>
               </label>
             ) : (
@@ -379,17 +443,21 @@ function HostContent() {
             )}
 
             <p className="asr-status" role="status">
-              {saved
-                ? "Recording saved. End the lecture when you are ready to generate the study pack."
-                : recorder.paused
-                  ? "Paused — audio chunks are not being sent while paused."
-                  : lecture.asrStatus !== "Waiting for audio"
-                    ? lecture.asrStatus
-                    : lecture.lastCaption
-                      ? "Live captions streaming to your students."
-                      : recorder.recording
-                        ? "Processing audio — awaiting first captions."
-                        : "Audio permission is requested only when you start."}
+              {uploadNote
+                ? uploadNote
+                : saved
+                  ? "Recording saved. End the lecture when you are ready to generate the study pack."
+                  : recorder.paused
+                    ? "Paused — audio chunks are not being sent while paused."
+                    : audioSource === "tab" && !tabSupported
+                      ? "Tab audio sharing is only available on desktop browsers. Switch to Microphone or Upload on this device."
+                      : lecture.asrStatus !== "Waiting for audio"
+                        ? lecture.asrStatus
+                        : lecture.lastCaption
+                          ? "Live captions streaming to your students."
+                          : recorder.recording
+                            ? "Processing audio — awaiting first captions."
+                            : "Audio permission is requested only when you start."}
             </p>
             {errors.map((message, i) => (
               <ErrorState key={i} message={message} />
@@ -466,9 +534,21 @@ function HostContent() {
             <div className="source-options">
               {(
                 [
-                  ["mic", "mic", "Microphone", "In-person lectures"],
-                  ["tab", "monitor", "Browser tab", "Share a tab with audio"],
-                  ["upload", "upload", "Upload", "An existing WebM file"],
+                  ["mic", "mic", "Microphone", "All devices (in-person)"],
+                  [
+                    "tab",
+                    "monitor",
+                    "Browser tab",
+                    tabSupported
+                      ? "Share a tab with audio"
+                      : "Desktop browsers only",
+                  ],
+                  [
+                    "upload",
+                    "upload",
+                    "Upload",
+                    "Audio file (WebM, MP3, WAV, M4A)",
+                  ],
                 ] as const
               ).map(([id, icon, label, description]) => (
                 <button
@@ -509,6 +589,13 @@ function HostContent() {
                   Back to dashboard
                   <PillDot />
                 </Link>
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={onNewHost}
+                >
+                  Host new lecture
+                </button>
                 <Link
                   className="button secondary"
                   href={`/session/${created.code}`}
