@@ -25,6 +25,7 @@ import {
   readAuth,
   request,
   roomPath,
+  speakSessionText,
   storePreference,
 } from "../../../lib/client";
 
@@ -51,8 +52,62 @@ function SessionContent({ code }: { code: string }) {
       ],
   );
   const [active, setActive] = useState<number | null>(null);
+  const [speakingTranslation, setSpeakingTranslation] = useState(false);
+  const ttsAudio = useRef<HTMLAudioElement | null>(null);
   const play = useRef<(ms: number) => void>(() => {});
   const lecture = useLecture(code, language);
+  useEffect(
+    () => () => {
+      ttsAudio.current?.pause();
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    },
+    [],
+  );
+  async function speakTranslation(text: string) {
+    if (speakingTranslation) {
+      ttsAudio.current?.pause();
+      ttsAudio.current = null;
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+      setSpeakingTranslation(false);
+      return;
+    }
+    setSpeakingTranslation(true);
+    try {
+      const audio = await speakSessionText(code, text, language);
+      ttsAudio.current = audio;
+      audio.addEventListener(
+        "ended",
+        () => {
+          ttsAudio.current = null;
+          setSpeakingTranslation(false);
+        },
+        { once: true },
+      );
+      audio.addEventListener(
+        "error",
+        () => {
+          ttsAudio.current = null;
+          setSpeakingTranslation(false);
+        },
+        { once: true },
+      );
+    } catch {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = language;
+        utterance.onend = () => setSpeakingTranslation(false);
+        utterance.onerror = () => setSpeakingTranslation(false);
+        window.speechSynthesis.speak(utterance);
+      } else {
+        setSpeakingTranslation(false);
+      }
+    }
+  }
   const last = lecture.lines.at(-1);
   const translation =
     last && lecture.translations[`${language}:${last.offsetMs}`];
@@ -125,6 +180,8 @@ function SessionContent({ code }: { code: string }) {
               lines={lecture.lines}
               size={size}
               onPlay={onPlay}
+              onSpeak={(text) => void speakTranslation(text)}
+              speaking={speakingTranslation}
               active={last?.offsetMs === active}
               activeOffset={active}
             />
@@ -161,6 +218,8 @@ function SessionContent({ code }: { code: string }) {
               })}
               size={size}
               onPlay={onPlay}
+              onSpeak={(text) => void speakTranslation(text)}
+              speaking={speakingTranslation}
               active={last?.offsetMs === active}
               activeOffset={active}
             />

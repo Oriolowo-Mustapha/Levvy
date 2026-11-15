@@ -36,6 +36,8 @@ export function LiveCaptionCard({
   line,
   lines,
   onPlay,
+  onSpeak,
+  speaking = false,
   size = 24,
   active = false,
   activeOffset = null,
@@ -47,6 +49,8 @@ export function LiveCaptionCard({
   line?: TranscriptLineDto;
   lines?: TranscriptLineDto[];
   onPlay: (ms: number) => void;
+  onSpeak?: (text: string) => void;
+  speaking?: boolean;
   size?: number;
   active?: boolean;
   activeOffset?: number | null;
@@ -86,16 +90,24 @@ export function LiveCaptionCard({
         </button>
         <button
           type="button"
-          className="icon-button"
+          className={`icon-button${speaking ? " speaking" : ""}`}
           disabled={!latest}
+          aria-pressed={onSpeak ? speaking : undefined}
           aria-label={
-            latest
-              ? `Listen from ${formatMmSs(latest.offsetMs)}`
-              : "Nothing to listen to yet"
+            onSpeak
+              ? speaking
+                ? "Stop translated speech"
+                : "Listen to translated speech"
+              : latest
+                ? `Listen from ${formatMmSs(latest.offsetMs)}`
+                : "Nothing to listen to yet"
           }
-          onClick={() => latest && onPlay(latest.offsetMs)}
+          onClick={() => {
+            if (onSpeak && fullText) onSpeak(fullText);
+            else if (latest) onPlay(latest.offsetMs);
+          }}
         >
-          <Icon name="volume" size={15} />
+          <Icon name={speaking ? "stop" : "volume"} size={15} />
         </button>
         {languageControl || (
           <LanguagePill value={language} caption={dark ? "To" : "From"} />
