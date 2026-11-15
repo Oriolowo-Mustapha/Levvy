@@ -22,6 +22,9 @@ internal sealed class DeepgramUtterance
     [JsonPropertyName("start")]
     public double Start { get; set; }
 
+    [JsonPropertyName("speaker")]
+    public int? Speaker { get; set; }
+
     [JsonPropertyName("transcript")]
     public string? Transcript { get; set; }
 }

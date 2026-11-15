@@ -8,7 +8,8 @@ using Microsoft.Extensions.Configuration;
 namespace Levvy.Infrastructure.Asr;
 
 /// <summary>
-/// Fallback ASR Strategy implementation using Deepgram Nova-2 API.
+/// Primary ASR Strategy implementation using Deepgram Nova-3 API (/v1/listen).
+/// Supports smart formatting, speaker diarization, language detection, and Nova-3 keyterm prompting.
 /// </summary>
 public class DeepgramAsrStreamer : IAsrStreamer
 {
@@ -46,8 +47,16 @@ public class DeepgramAsrStreamer : IAsrStreamer
         if (string.IsNullOrWhiteSpace(apiKey))
             throw new InvalidOperationException("DEEPGRAM_API_KEY is not configured.");
 
-        var model = _cfg["Deepgram:Model"] ?? _cfg["DEEPGRAM_MODEL"] ?? "nova-2";
+        var model = (_cfg["Deepgram:Model"] ?? _cfg["DEEPGRAM_MODEL"] ?? "nova-3").Trim();
+        var diarizeRaw = _cfg["Deepgram:Diarize"] ?? _cfg["DEEPGRAM_DIARIZE"];
+        var diarize = !string.Equals(diarizeRaw, "false", StringComparison.OrdinalIgnoreCase);
+
         var query = $"listen?model={Uri.EscapeDataString(model)}&smart_format=true&utterances=true&punctuate=true";
+        if (diarize)
+        {
+            query += "&diarize=true";
+        }
+
         if (!string.IsNullOrWhiteSpace(sourceLanguage) &&
             !sourceLanguage.Equals("auto", StringComparison.OrdinalIgnoreCase) &&
             !sourceLanguage.Equals("mixed", StringComparison.OrdinalIgnoreCase))
@@ -57,6 +66,16 @@ public class DeepgramAsrStreamer : IAsrStreamer
         else
         {
             query += "&detect_language=true";
+        }
+
+        var keytermsRaw = _cfg["Deepgram:Keyterms"] ?? _cfg["DEEPGRAM_KEYTERMS"];
+        if (!string.IsNullOrWhiteSpace(keytermsRaw))
+        {
+            var termParam = model.StartsWith("nova-3", StringComparison.OrdinalIgnoreCase) ? "keyterm" : "keywords";
+            foreach (var term in keytermsRaw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(25))
+            {
+                query += $"&{termParam}={Uri.EscapeDataString(term)}";
+            }
         }
 
         using var req = new HttpRequestMessage(HttpMethod.Post, query)
@@ -99,11 +118,20 @@ public class DeepgramAsrStreamer : IAsrStreamer
 
         if (payload.Results.Utterances is { Count: > 0 })
         {
+            var distinctSpeakers = payload.Results.Utterances
+                .Where(u => u.Speaker.HasValue)
+                .Select(u => u.Speaker!.Value)
+                .Distinct()
+                .Count();
+
             foreach (var u in payload.Results.Utterances)
             {
                 var text = u.Transcript?.Trim();
                 if (string.IsNullOrWhiteSpace(text))
                     continue;
+
+                if (distinctSpeakers > 1 && u.Speaker.HasValue)
+                    text = $"[Speaker {u.Speaker.Value + 1}] {text}";
 
                 var relMs = (long)Math.Round(Math.Max(0, u.Start) * 1000.0, MidpointRounding.AwayFromZero);
                 segments.Add(new TranscriptSegment

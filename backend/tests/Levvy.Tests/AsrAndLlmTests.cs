@@ -3,6 +3,7 @@ using System.Text;
 using Levvy.Domain.Entities;
 using Levvy.Infrastructure.Asr;
 using Levvy.Infrastructure.Llm;
+using Levvy.Infrastructure.Speech;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -168,6 +169,7 @@ public class AsrAndLlmTests
 
         var cfg = new StubConfiguration(new Dictionary<string, string?>
         {
+            ["ASR_PROVIDER"] = "groq",
             ["Groq:ApiKey"] = "test-groq-key",
             ["Deepgram:ApiKey"] = "test-dg-key"
         });
@@ -261,6 +263,124 @@ public class AsrAndLlmTests
         Assert.Single(segments);
         Assert.Equal(20_500, segments[0].OffsetMs);
         Assert.Equal("Primary caption from Deepgram Nova-2.", segments[0].Text);
+    }
+
+    [Fact]
+    public async Task ResilientAsrStreamer_defaults_to_Deepgram_and_falls_back_to_Groq_when_Deepgram_fails()
+    {
+        var deepgramHandler = new FakeHttpMessageHandler(_ =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)));
+
+        var groqHandler = new FakeHttpMessageHandler(_ =>
+        {
+            var whisperJson = """
+            {
+              "segments": [
+                { "start": 2.0, "text": "Fallback caption from Groq Whisper." }
+              ]
+            }
+            """;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(whisperJson, Encoding.UTF8, "application/json")
+            });
+        });
+
+        var cfg = new StubConfiguration(new Dictionary<string, string?>
+        {
+            ["DEEPGRAM_API_KEY"] = "test-dg-key",
+            ["GROQ_API_KEY"] = "test-groq-key"
+        });
+
+        var groq = new GroqAsrStreamer(new HttpClient(groqHandler), cfg);
+        var deepgram = new DeepgramAsrStreamer(new HttpClient(deepgramHandler), cfg);
+        var resilient = new ResilientAsrStreamer(groq, deepgram, cfg, NullLogger<ResilientAsrStreamer>.Instance);
+
+        using var audio = new MemoryStream(new byte[] { 1, 2, 3, 4 });
+        var segments = await resilient.TranscribeChunkAsync(audio, chunkStartOffsetMs: 30_000, sourceLanguage: "en", CancellationToken.None);
+
+        Assert.Single(segments);
+        Assert.Equal(32_000, segments[0].OffsetMs);
+        Assert.Equal("Fallback caption from Groq Whisper.", segments[0].Text);
+    }
+
+    [Fact]
+    public async Task DeepgramTextToSpeech_synthesizes_audio_from_text()
+    {
+        string? requestedUri = null;
+        string? authScheme = null;
+        var expectedAudio = new byte[] { 0x49, 0x44, 0x33, 0x01 };
+
+        var handler = new FakeHttpMessageHandler(req =>
+        {
+            requestedUri = req.RequestUri?.AbsoluteUri;
+            authScheme = req.Headers.Authorization?.ToString();
+            var resp = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(expectedAudio)
+            };
+            resp.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/mpeg");
+            return Task.FromResult(resp);
+        });
+
+        var cfg = new StubConfiguration(new Dictionary<string, string?>
+        {
+            ["DEEPGRAM_API_KEY"] = "test-dg-key"
+        });
+
+        var tts = new DeepgramTextToSpeech(new HttpClient(handler), cfg);
+        var result = await tts.SynthesizeAsync("Gradient descent minimizes the loss.", "en", null, CancellationToken.None);
+
+        Assert.Equal("Token test-dg-key", authScheme);
+        Assert.Contains("speak?model=aura-2-thalia-en&encoding=mp3", requestedUri);
+        Assert.Equal("audio/mpeg", result.ContentType);
+        Assert.Equal(expectedAudio, result.AudioBytes);
+
+        var esResult = await tts.SynthesizeAsync("Hola clase.", "es", null, CancellationToken.None);
+        Assert.Contains("speak?model=aura-2-celeste-es&encoding=mp3", requestedUri);
+        Assert.Equal(expectedAudio, esResult.AudioBytes);
+    }
+
+    [Fact]
+    public async Task DeepgramAsrStreamer_uses_nova3_diarize_and_keyterms_and_labels_multi_speaker_utterances()
+    {
+        string? requestedUri = null;
+        var handler = new FakeHttpMessageHandler(req =>
+        {
+            requestedUri = req.RequestUri?.AbsoluteUri;
+            var dgJson = """
+            {
+              "results": {
+                "utterances": [
+                  { "start": 0.5, "speaker": 0, "transcript": "Any questions on backpropagation?" },
+                  { "start": 3.2, "speaker": 1, "transcript": "Yes, how does learning rate affect convergence?" }
+                ]
+              }
+            }
+            """;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(dgJson, Encoding.UTF8, "application/json")
+            });
+        });
+
+        var cfg = new StubConfiguration(new Dictionary<string, string?>
+        {
+            ["DEEPGRAM_API_KEY"] = "test-dg-key",
+            ["DEEPGRAM_KEYTERMS"] = "backpropagation,gradient descent"
+        });
+
+        var streamer = new DeepgramAsrStreamer(new HttpClient(handler), cfg);
+        using var audio = new MemoryStream(new byte[] { 1, 2, 3, 4 });
+        var segments = await streamer.TranscribeChunkAsync(audio, chunkStartOffsetMs: 10_000, sourceLanguage: "en", CancellationToken.None);
+
+        Assert.Contains("model=nova-3", requestedUri);
+        Assert.Contains("diarize=true", requestedUri);
+        Assert.Contains("keyterm=backpropagation", requestedUri);
+        Assert.Contains("keyterm=gradient%20descent", requestedUri);
+        Assert.Equal(2, segments.Count);
+        Assert.Equal("[Speaker 1] Any questions on backpropagation?", segments[0].Text);
+        Assert.Equal("[Speaker 2] Yes, how does learning rate affect convergence?", segments[1].Text);
     }
 
     [Fact]

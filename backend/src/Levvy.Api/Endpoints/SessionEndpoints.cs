@@ -23,6 +23,7 @@ public static class SessionEndpoints
         group.MapPost("/{code}/join", JoinSession).WithSummary("Join a lecture session with preferred subtitle language");
         group.MapGet("/{code}/transcript", GetTranscript).WithSummary("Get full transcript timeline for a session");
         group.MapPost("/{code}/ask", AskQuestion).WithSummary("Ask a grounded question against the lecture transcript");
+        group.MapPost("/{code}/speak", SpeakText).WithSummary("Synthesize speech audio from text via Deepgram Aura TTS");
         group.MapPost("/{id:guid}/end", EndSession).WithSummary("End a live session and queue Study Pack generation");
         group.MapGet("/{code}/pack", GetStudyPack).WithSummary("Get generated Study Pack summary and flashcards");
         group.MapPost("/{id:guid}/audio", UploadAudio).WithSummary("Upload recorded session audio to object storage");
@@ -331,6 +332,32 @@ public static class SessionEndpoints
         catch (ValidationException ex)
         {
             return Results.BadRequest(new { error = ex.Message });
+        }
+    }
+
+    private static async Task<IResult> SpeakText(
+        string code,
+        SpeakTextRequest req,
+        ISender sender,
+        ITextToSpeech tts,
+        CancellationToken ct)
+    {
+        var session = await sender.Send(new GetSessionByCodeQuery(code), ct);
+        if (session is null)
+            return Results.NotFound(new { error = "Session not found." });
+
+        try
+        {
+            var audio = await tts.SynthesizeAsync(req.Text, req.Language, req.VoiceModel, ct);
+            return Results.File(audio.AudioBytes, audio.ContentType);
+        }
+        catch (ArgumentException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.Json(new { error = ex.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
         }
     }
 

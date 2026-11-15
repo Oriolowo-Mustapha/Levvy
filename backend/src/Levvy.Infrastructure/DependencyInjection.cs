@@ -7,6 +7,7 @@ using Levvy.Infrastructure.BackgroundJobs;
 using Levvy.Infrastructure.Llm;
 using Levvy.Infrastructure.Meetings;
 using Levvy.Infrastructure.Persistence;
+using Levvy.Infrastructure.Speech;
 using Levvy.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -91,6 +92,11 @@ public static class DependencyInjection
                 sp.GetRequiredService<IConfiguration>()));
 
         services.AddScoped<IAsrStreamer, ResilientAsrStreamer>();
+
+        services.AddScoped<ITextToSpeech>(sp =>
+            new DeepgramTextToSpeech(
+                sp.GetRequiredService<IHttpClientFactory>().CreateClient("Deepgram"),
+                sp.GetRequiredService<IConfiguration>()));
 
         services.AddScoped<GroqLlmClient>(sp =>
             new GroqLlmClient(

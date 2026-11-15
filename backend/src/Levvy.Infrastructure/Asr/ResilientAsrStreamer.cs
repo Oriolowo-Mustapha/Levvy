@@ -6,14 +6,14 @@ using Microsoft.Extensions.Logging;
 namespace Levvy.Infrastructure.Asr;
 
 /// <summary>
-/// Decorator/Strategy wrapper supporting Groq (default) or Deepgram (via ASR_PROVIDER=deepgram)
+/// Decorator/Strategy wrapper supporting Deepgram (default) or Groq (via ASR_PROVIDER=groq)
 /// as primary ASR with automatic failover to the configured backup provider.
-/// Audit fix (M4): a circuit breaker skips the primary provider for a cool-down window after
-/// repeated consecutive failures, instead of re-hitting a dead endpoint on every chunk.
+/// Includes a circuit breaker that skips the primary provider for a cool-down window after
+/// repeated consecutive failures instead of re-hitting a dead endpoint on every chunk.
 /// </summary>
 public class ResilientAsrStreamer(
-    GroqAsrStreamer primary,
-    DeepgramAsrStreamer fallback,
+    GroqAsrStreamer groq,
+    DeepgramAsrStreamer deepgram,
     IConfiguration cfg,
     ILogger<ResilientAsrStreamer> logger) : IAsrStreamer
 {
@@ -36,30 +36,23 @@ public class ResilientAsrStreamer(
 
         var hasGroqKey = !string.IsNullOrWhiteSpace(cfg["Groq:ApiKey"] ?? cfg["GROQ_API_KEY"]);
         var hasDeepgramKey = !string.IsNullOrWhiteSpace(cfg["Deepgram:ApiKey"] ?? cfg["DEEPGRAM_API_KEY"]);
-        var preferredProvider = (cfg["Asr:Provider"] ?? cfg["ASR_PROVIDER"] ?? "groq").Trim().ToLowerInvariant();
-        var useDeepgramFirst = preferredProvider == "deepgram" || (!hasGroqKey && hasDeepgramKey);
+        var preferredProvider = (cfg["Asr:Provider"] ?? cfg["ASR_PROVIDER"] ?? "deepgram").Trim().ToLowerInvariant();
 
-        if (useDeepgramFirst)
-        {
-            try
-            {
-                using var dgStream = new MemoryStream(payloadBytes, writable: false);
-                return await fallback.TranscribeChunkAsync(dgStream, chunkStartOffsetMs, sourceLanguage, ct);
-            }
-            catch (Exception ex) when (!ct.IsCancellationRequested && hasGroqKey)
-            {
-                logger.LogWarning(ex, "Deepgram ASR failed for chunk at {OffsetMs}ms; falling back to Groq.", chunkStartOffsetMs);
-                using var groqStream = new MemoryStream(payloadBytes, writable: false);
-                return await primary.TranscribeChunkAsync(groqStream, chunkStartOffsetMs, sourceLanguage, ct);
-            }
-        }
+        // Deepgram is primary by default; fall back to Groq Whisper if Deepgram fails or isn't configured.
+        // Explicit ASR_PROVIDER=groq flips the order (Groq primary, Deepgram fallback).
+        var deepgramIsPrimary = (preferredProvider != "groq" && hasDeepgramKey) || (!hasGroqKey && hasDeepgramKey);
 
-        var skipPrimary = IsPrimaryCircuitOpen();
-        if (skipPrimary && hasDeepgramKey)
+        IAsrStreamer primary = deepgramIsPrimary ? deepgram : groq;
+        IAsrStreamer fallback = deepgramIsPrimary ? groq : deepgram;
+        var primaryName = deepgramIsPrimary ? "Deepgram" : "Groq";
+        var fallbackName = deepgramIsPrimary ? "Groq" : "Deepgram";
+        var hasFallbackKey = deepgramIsPrimary ? hasGroqKey : hasDeepgramKey;
+
+        if (IsPrimaryCircuitOpen() && hasFallbackKey)
         {
             logger.LogWarning(
-                "Groq ASR circuit open (after {Failures} consecutive failures); skipping straight to Deepgram for chunk at {OffsetMs}ms.",
-                FailureThreshold, chunkStartOffsetMs);
+                "{Primary} ASR circuit open (after {Failures} consecutive failures); skipping straight to {Fallback} for chunk at {OffsetMs}ms.",
+                primaryName, FailureThreshold, fallbackName, chunkStartOffsetMs);
             using var fallbackStream = new MemoryStream(payloadBytes, writable: false);
             return await fallback.TranscribeChunkAsync(fallbackStream, chunkStartOffsetMs, sourceLanguage, ct);
         }
@@ -71,10 +64,13 @@ public class ResilientAsrStreamer(
             ResetCircuit();
             return result;
         }
-        catch (Exception ex) when (!ct.IsCancellationRequested && hasDeepgramKey)
+        catch (Exception ex) when (!ct.IsCancellationRequested && hasFallbackKey)
         {
-            logger.LogWarning(ex, "Groq ASR failed for chunk at {OffsetMs}ms; falling back to Deepgram.", chunkStartOffsetMs);
-            RecordPrimaryFailure();
+            logger.LogWarning(
+                ex,
+                "{Primary} ASR failed for chunk at {OffsetMs}ms; falling back to {Fallback}.",
+                primaryName, chunkStartOffsetMs, fallbackName);
+            RecordPrimaryFailure(primaryName);
             using var fallbackStream = new MemoryStream(payloadBytes, writable: false);
             return await fallback.TranscribeChunkAsync(fallbackStream, chunkStartOffsetMs, sourceLanguage, ct);
         }
@@ -89,7 +85,7 @@ public class ResilientAsrStreamer(
         }
     }
 
-    private void RecordPrimaryFailure()
+    private void RecordPrimaryFailure(string primaryName)
     {
         lock (_circuitLock)
         {
@@ -98,8 +94,8 @@ public class ResilientAsrStreamer(
             {
                 _primaryCircuitOpenUntil = DateTimeOffset.UtcNow.Add(CircuitOpenDuration);
                 logger.LogWarning(
-                    "Groq ASR circuit OPENED for {Seconds}s after {Failures} consecutive failures.",
-                    CircuitOpenDuration.TotalSeconds, _consecutivePrimaryFailures);
+                    "{Primary} ASR circuit OPENED for {Seconds}s after {Failures} consecutive failures.",
+                    primaryName, CircuitOpenDuration.TotalSeconds, _consecutivePrimaryFailures);
             }
         }
     }
