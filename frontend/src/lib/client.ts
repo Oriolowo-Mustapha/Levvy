@@ -64,6 +64,30 @@ export async function uploadAudio(id: string, blob: Blob) {
     body: blob,
   });
 }
+export async function speakSessionText(
+  code: string,
+  text: string,
+  language?: string,
+): Promise<HTMLAudioElement> {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  const auth = readAuth();
+  if (auth) headers.set("Authorization", `Bearer ${auth.accessToken}`);
+  const response = await fetch(`${API_BASE}${roomPath(code)}/speak`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ text, language }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.error || `Speech synthesis failed (${response.status}).`);
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  audio.addEventListener("ended", () => URL.revokeObjectURL(url), { once: true });
+  await audio.play();
+  return audio;
+}
 export function errorText(error: unknown) {
   return error instanceof Error
     ? error.message

@@ -1,5 +1,5 @@
 "use client";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -124,16 +124,38 @@ function GoogleSignIn({
 }: {
   onSuccess: (data: AuthResponseDto) => void;
 }) {
-  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  const [clientId, setClientId] = useState(
+    () => process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "",
+  );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (clientId) return;
+    let active = true;
+    void request<{ googleClientId?: string }>("/auth/config")
+      .then((cfg) => {
+        if (active && cfg.googleClientId) setClientId(cfg.googleClientId);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [clientId]);
+
   async function start() {
     setBusy(true);
     setError("");
     try {
-      if (!clientId)
+      let resolvedClientId = clientId;
+      if (!resolvedClientId) {
+        const cfg = await request<{ googleClientId?: string }>("/auth/config");
+        resolvedClientId = cfg.googleClientId || "";
+        if (resolvedClientId) setClientId(resolvedClientId);
+      }
+      if (!resolvedClientId)
         throw new Error(
-          "Google sign-in is not configured. Please use email sign-in.",
+          "Google sign-in is not configured yet. Please use email sign-in.",
         );
       const google = await new Promise<GoogleIdentity>((resolve, reject) => {
         if (window.google) return resolve(window.google);
@@ -149,7 +171,7 @@ function GoogleSignIn({
         document.head.appendChild(script);
       });
       google.accounts.id.initialize({
-        client_id: clientId,
+        client_id: resolvedClientId,
         callback: async ({ credential }) => {
           try {
             onSuccess(
@@ -182,18 +204,15 @@ function GoogleSignIn({
   }
   return (
     <div className="google-auth">
-      {clientId && (
-        <>
-          <button
-            className="button secondary"
-            disabled={busy}
-            onClick={() => void start()}
-          >
-            Continue with Google
-          </button>
-          <div id="google-sign-in" />
-        </>
-      )}
+      <button
+        type="button"
+        className="button secondary"
+        disabled={busy}
+        onClick={() => void start()}
+      >
+        {busy ? "Loading Google…" : "Continue with Google"}
+      </button>
+      <div id="google-sign-in" />
       {error && <ErrorState message={error} />}
     </div>
   );

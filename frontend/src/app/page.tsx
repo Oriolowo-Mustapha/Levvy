@@ -71,6 +71,35 @@ function HomeContent() {
       setBusy(false);
     }
   }
+  async function tryDemo() {
+    setBusy(true);
+    setError("");
+    try {
+      const demo = await request<{ sessionId: string; code: string }>(
+        "/sessions/demo",
+        { method: "POST" },
+      );
+      const auth = readAuth();
+      const joined = await request<JoinSessionResponse>(
+        `${roomPath(demo.code)}/join`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            displayName: auth?.user.firstName || "Student",
+            preferredLanguage: target,
+          }),
+        },
+      );
+      sessionStorage.setItem(
+        `levvy.participant.${demo.code}`,
+        joined.participantId,
+      );
+      router.push(`/session/${encodeURIComponent(demo.code)}`);
+    } catch (e) {
+      setError(errorText(e));
+      setBusy(false);
+    }
+  }
   async function paste() {
     try {
       const text = await navigator.clipboard.readText();
@@ -134,6 +163,17 @@ function HomeContent() {
             </PrimaryActionButton>
           </div>
         </form>
+        <div className="pill-switch">
+          <button
+            type="button"
+            className="button secondary"
+            disabled={busy}
+            onClick={() => void tryDemo()}
+          >
+            Try demo lecture (K4F-8Q2)
+            <Icon name="spark" size={14} />
+          </button>
+        </div>
         <RecentLecture />
       </main>
     </>

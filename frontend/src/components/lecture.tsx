@@ -13,7 +13,12 @@ import {
   type AskAnswerResponse,
   type TranscriptLineDto,
 } from "../lib/api";
-import { request, roomPath, errorText } from "../lib/client";
+import {
+  request,
+  roomPath,
+  errorText,
+  speakSessionText,
+} from "../lib/client";
 import {
   AudioReceiptChip,
   CopyButton,
@@ -233,6 +238,7 @@ export function AskLevvyPanel({
   const [asked, setAsked] = useState("");
   const [answer, setAnswer] = useState<AskAnswerResponse | null>(null);
   const [busy, setBusy] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
   const [error, setError] = useState("");
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -302,6 +308,29 @@ export function AskLevvyPanel({
                   <AudioReceiptChip key={ms} offsetMs={ms} onPlay={onPlay} />
                 ))}
               </div>
+            )}
+            {(grounded || answer.status === "not_covered") && (
+              <button
+                type="button"
+                className="button secondary"
+                disabled={speaking}
+                onClick={async () => {
+                  setSpeaking(true);
+                  setError("");
+                  try {
+                    const audio = await speakSessionText(code, answer.text);
+                    audio.addEventListener("ended", () => setSpeaking(false), {
+                      once: true,
+                    });
+                  } catch (e) {
+                    setError(errorText(e));
+                    setSpeaking(false);
+                  }
+                }}
+              >
+                <Icon name="volume" size={14} />
+                {speaking ? "Speaking…" : "Read answer aloud"}
+              </button>
             )}
           </div>
         )}

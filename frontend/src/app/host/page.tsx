@@ -39,6 +39,8 @@ export default function HostPage() {
 function HostContent() {
   const [created, setCreated] = useState<CreateSessionResponse | null>(null);
   const [title, setTitle] = useState("");
+  const [meetingUrl, setMeetingUrl] = useState("");
+  const [meetStatus, setMeetStatus] = useState("");
   const [source, setSource] = useState(() => preference("source", "en"));
   const [target, setTarget] = useState(() => preference("language", "fr"));
   const [audioSource, setAudioSource] = useState<"mic" | "tab" | "upload">(
@@ -73,14 +75,46 @@ function HostContent() {
     e.preventDefault();
     setBusy(true);
     setError("");
+    setMeetStatus("");
     try {
       const auth = readAuth();
       if (!auth) throw new Error("Sign in before hosting a lecture.");
-      const data = await request<CreateSessionResponse>("/sessions", {
-        method: "POST",
-        body: JSON.stringify({ title, hostId: auth.user.id }),
-      });
+      const trimmedUrl = meetingUrl.trim();
+      const data = trimmedUrl
+        ? await request<CreateSessionResponse>("/sessions/online-class", {
+            method: "POST",
+            body: JSON.stringify({
+              title,
+              meetingUrl: trimmedUrl,
+              hostId: auth.user.id,
+            }),
+          })
+        : await request<CreateSessionResponse>("/sessions", {
+            method: "POST",
+            body: JSON.stringify({ title, hostId: auth.user.id }),
+          });
       setCreated(data);
+      if (trimmedUrl) {
+        setMeetStatus("Levvy note-taker bot dispatched to your online class.");
+      }
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function connectMeet(e: FormEvent) {
+    e.preventDefault();
+    if (!created || !meetingUrl.trim()) return;
+    setBusy(true);
+    setError("");
+    setMeetStatus("");
+    try {
+      await request(`/sessions/${created.sessionId}/connect-meet`, {
+        method: "POST",
+        body: JSON.stringify({ meetingUrl: meetingUrl.trim() }),
+      });
+      setMeetStatus("Levvy note-taker bot dispatched to your online class.");
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -187,6 +221,17 @@ function HostContent() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. Introduction to microeconomics"
+              />
+            </label>
+            <label className="entry-box">
+              <span className="entry-label">
+                Google Meet / Online class link (optional)
+              </span>
+              <input
+                type="url"
+                value={meetingUrl}
+                onChange={(e) => setMeetingUrl(e.target.value)}
+                placeholder="https://meet.google.com/abc-defg-hij"
               />
             </label>
             {errors.map((message, i) => (
@@ -366,6 +411,30 @@ function HostContent() {
                 </button>
               ))}
             </div>
+          </section>
+          <section className="panel">
+            <h2>Online class bot</h2>
+            <form onSubmit={connectMeet}>
+              <label className="entry-box">
+                <span className="entry-label">Meeting URL</span>
+                <input
+                  type="url"
+                  required
+                  value={meetingUrl}
+                  onChange={(e) => setMeetingUrl(e.target.value)}
+                  placeholder="https://meet.google.com/abc-defg-hij"
+                  disabled={busy || ended}
+                />
+              </label>
+              <SecondaryActionButton disabled={busy || ended}>
+                {busy ? "Dispatching…" : "Send Levvy bot"}
+              </SecondaryActionButton>
+            </form>
+            {meetStatus && (
+              <p className="muted" role="status">
+                {meetStatus}
+              </p>
+            )}
           </section>
           <SecondaryActionButton
             disabled={busy || ended}

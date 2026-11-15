@@ -17,6 +17,9 @@ public static class AuthEndpoints
         group.MapPost("/register", Register).WithSummary("Register a new Levvy account with email and password");
         group.MapPost("/login", Login).WithSummary("Log in with email and password");
         group.MapPost("/google", GoogleAuth).WithSummary("Sign in or sign up using a Google ID token");
+        group.MapGet("/config", (IConfiguration cfg) =>
+            Results.Ok(new { googleClientId = cfg["Google:ClientId"] ?? cfg["GOOGLE_CLIENT_ID"] ?? "" }))
+            .WithSummary("Get public auth configuration (Google OAuth client ID)");
         group.MapGet("/me", GetMe).WithSummary("Get the currently authenticated user's profile");
 
         return group;
