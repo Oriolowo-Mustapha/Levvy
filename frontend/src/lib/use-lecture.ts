@@ -23,6 +23,7 @@ export function useLecture(
   const [sourceLanguage, setSourceLanguage] = useState("auto");
   const [asrStatus, setAsrStatus] = useState("Waiting for audio");
   const pendingAudio = useRef(0);
+  const translatingKeys = useRef<Set<string>>(new Set());
   const socket = useRef<WebSocket | null>(null);
   const languageRef = useRef(language);
   useEffect(() => {
@@ -30,6 +31,58 @@ export function useLecture(
     if (socket.current?.readyState === WebSocket.OPEN)
       socket.current.send(JSON.stringify({ type: "set_lang", lang: language }));
   }, [language]);
+  useEffect(() => {
+    if (
+      role !== "viewer" ||
+      !code ||
+      !language ||
+      language === "auto" ||
+      language === sourceLanguage ||
+      lines.length === 0
+    )
+      return;
+    const missing = lines.filter(
+      (line) =>
+        line.text.trim() &&
+        translations[`${language}:${line.offsetMs}`] === undefined &&
+        !translatingKeys.current.has(`${language}:${line.offsetMs}`),
+    );
+    if (missing.length === 0) return;
+    missing.forEach((line) =>
+      translatingKeys.current.add(`${language}:${line.offsetMs}`),
+    );
+    let cancelled = false;
+    void request<{
+      targetLanguage: string;
+      translations: Array<{ offsetMs: number; text: string }>;
+    }>(`${roomPath(code)}/translate`, {
+      method: "POST",
+      body: JSON.stringify({
+        targetLanguage: language,
+        offsetsMs: missing.map((line) => line.offsetMs),
+      }),
+    })
+      .then((res) => {
+        if (cancelled || !Array.isArray(res?.translations)) return;
+        setTranslations((previous) => {
+          const next = { ...previous };
+          for (const item of res.translations) {
+            if (typeof item.text === "string" && item.text.trim()) {
+              next[`${language}:${item.offsetMs}`] = item.text;
+            }
+          }
+          return next;
+        });
+      })
+      .catch(() => {
+        missing.forEach((line) =>
+          translatingKeys.current.delete(`${language}:${line.offsetMs}`),
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [code, role, language, sourceLanguage, lines, translations]);
   useEffect(() => {
     if (!code) return;
     let disposed = false;

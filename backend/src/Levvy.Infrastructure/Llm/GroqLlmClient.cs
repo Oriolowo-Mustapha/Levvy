@@ -178,7 +178,7 @@ public class GroqLlmClient : ITranslator, ILlmAnswerer
         if (string.IsNullOrWhiteSpace(apiKey))
             throw new InvalidOperationException("GROQ_API_KEY is not configured in .env or environment variables.");
 
-        var primaryModel = _cfg["Groq:AnswerModel"] ?? _cfg["GROQ_ANSWER_MODEL"] ?? "gpt-oss-120b";
+        var primaryModel = _cfg["Groq:AnswerModel"] ?? _cfg["GROQ_ANSWER_MODEL"] ?? "openai/gpt-oss-120b";
         var fallbackModel = _cfg["Groq:FallbackModel"] ?? _cfg["GROQ_FALLBACK_MODEL"] ?? "llama-3.3-70b-versatile";
 
         try

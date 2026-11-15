@@ -24,6 +24,7 @@ public static class SessionEndpoints
         group.MapPost("/{code}/join", JoinSession).WithSummary("Join a lecture session with preferred subtitle language");
         group.MapGet("/{code}/transcript", GetTranscript).WithSummary("Get full transcript timeline for a session");
         group.MapPost("/{code}/ask", AskQuestion).WithSummary("Ask a grounded question against the lecture transcript");
+        group.MapPost("/{code}/translate", TranslateTranscript).WithSummary("Translate existing transcript segments into a target language");
         group.MapPost("/{code}/speak", SpeakText).WithSummary("Synthesize speech audio from text via Deepgram Aura TTS");
         group.MapPost("/{id:guid}/end", EndSession).WithSummary("End a live session and queue Study Pack generation");
         group.MapGet("/{code}/pack", GetStudyPack).WithSummary("Get generated Study Pack summary and flashcards");
@@ -368,8 +369,10 @@ public static class SessionEndpoints
         string code,
         AskQuestionRequest req,
         ISender sender,
+        ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
+        var logger = loggerFactory.CreateLogger("Levvy.Api.AskQuestion");
         try
         {
             var result = await sender.Send(new AskQuestionCommand(code, req.AskerId ?? Guid.NewGuid(), req.Text), ct);
@@ -389,6 +392,72 @@ public static class SessionEndpoints
         catch (ValidationException ex)
         {
             return Results.BadRequest(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogError(ex, "AskQuestion configuration error for session {Code}", code);
+            return Results.Json(new { error = ex.Message }, statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogError(ex, "AskQuestion upstream LLM error for session {Code}", code);
+            return Results.Json(new { error = $"AI service error: {ex.Message}" }, statusCode: StatusCodes.Status502BadGateway);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "AskQuestion unexpected failure for session {Code}", code);
+            return Results.Json(new { error = $"Failed to answer question: {ex.Message}" }, statusCode: StatusCodes.Status500InternalServerError);
+        }
+    }
+
+    private static async Task<IResult> TranslateTranscript(
+        string code,
+        TranslateTranscriptRequest req,
+        ISender sender,
+        ITranslator translator,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        var targetLanguage = req.TargetLanguage?.Trim();
+        if (string.IsNullOrWhiteSpace(targetLanguage) ||
+            string.Equals(targetLanguage, "auto", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.BadRequest(new { error = "A valid targetLanguage is required." });
+        }
+
+        var session = await sender.Send(new GetSessionByCodeQuery(code), ct);
+        if (session is null)
+            return Results.NotFound(new { error = "Session not found." });
+
+        var lines = await sender.Send(new GetTranscriptQuery(session.Id), ct);
+        var filterOffsets = req.OffsetsMs is { Count: > 0 }
+            ? new HashSet<long>(req.OffsetsMs)
+            : null;
+
+        var toTranslate = lines
+            .Where(l => !string.IsNullOrWhiteSpace(l.Text) &&
+                        (filterOffsets is null || filterOffsets.Contains(l.OffsetMs)))
+            .Take(60)
+            .ToList();
+
+        if (toTranslate.Count == 0)
+            return Results.Ok(new { targetLanguage, translations = Array.Empty<object>() });
+
+        var logger = loggerFactory.CreateLogger("Levvy.Api.TranslateTranscript");
+        try
+        {
+            var results = await Task.WhenAll(toTranslate.Select(async line =>
+            {
+                var translated = await translator.TranslateAsync(line.Text, targetLanguage, ct);
+                return new { offsetMs = line.OffsetMs, text = translated };
+            }));
+
+            return Results.Ok(new { targetLanguage, translations = results });
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+        {
+            logger.LogWarning(ex, "TranslateTranscript failed for session {Code} -> {Lang}", code, targetLanguage);
+            return Results.Json(new { error = ex.Message }, statusCode: StatusCodes.Status502BadGateway);
         }
     }
 
@@ -544,4 +613,6 @@ public static class SessionEndpoints
 
         return Results.Ok(new CreateSessionResult(session.Id, session.Code));
     }
+
+    public sealed record TranslateTranscriptRequest(string TargetLanguage, IReadOnlyList<long>? OffsetsMs = null);
 }
