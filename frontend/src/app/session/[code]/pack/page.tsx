@@ -1,5 +1,4 @@
 "use client";
-import Link from "next/link";
 import { use, useEffect, useRef, useState } from "react";
 import type { FlashcardDto, StudyPackResponse } from "../../../../lib/api";
 import { errorText, request, roomPath } from "../../../../lib/client";
@@ -8,7 +7,6 @@ import {
   AudioReceiptChip,
   EmptyState,
   ErrorState,
-  Icon,
   LoadingState,
 } from "../../../../components/ui";
 import {
@@ -26,11 +24,8 @@ function Flashcard({
   const [flipped, setFlipped] = useState(false);
   return (
     <article className="flashcard">
-      <span className="eyebrow">
-        {flipped ? "THE EXPLANATION" : "A MOMENT TO REMEMBER"}
-      </span>
       <button
-        className="flashcard-face"
+        className={`flashcard-face ${flipped ? "flipped" : ""}`}
         aria-pressed={flipped}
         onClick={() => setFlipped(!flipped)}
       >
@@ -95,21 +90,15 @@ export default function StudyPackPage({
   }
   return (
     <>
-      <AppHeader />
+      <AppHeader
+        back={{ href: `/session/${code}`, label: "Back to lecture" }}
+      />
       <main id="main" className="pack-main">
-        <Link className="subtle-link" href={`/session/${code}`}>
-          <Icon name="back" size={16} />
-          Back to lecture
-        </Link>
         <div className="page-heading">
           <div>
-            <span className="eyebrow">KEEP THE UNDERSTANDING GOING</span>
             <h1>{pack?.title || "Your lecture, made memorable."}</h1>
             <p>Revisit the ideas. Hear the source. Make them yours.</p>
           </div>
-          <span className="small-icon">
-            <Icon name="spark" />
-          </span>
         </div>
         {loading && (
           <LoadingState>Gathering your study materials…</LoadingState>
@@ -125,7 +114,6 @@ export default function StudyPackPage({
               onActive={setActive}
             />
             <section className="summary-panel panel">
-              <span className="eyebrow">THE BIG PICTURE</span>
               <h2>Your lecture in focus.</h2>
               {pack.summary ? (
                 <div className="summary-text">{summary()}</div>

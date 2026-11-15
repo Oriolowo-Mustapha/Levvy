@@ -10,6 +10,7 @@ import {
   Icon,
   LanguageSelector,
   LoadingState,
+  PillDot,
   PrimaryActionButton,
 } from "../../components/ui";
 import { SessionCard, StudyPackCard } from "../../components/lecture";
@@ -112,7 +113,6 @@ function DashboardContent() {
       <main id="main" className="dashboard-main">
         <div className="page-heading">
           <div>
-            <span className="eyebrow">A SPACE FOR YOUR CURIOSITY</span>
             <h1>
               {data
                 ? `Hello, ${data.profile.firstName}.`
@@ -121,8 +121,8 @@ function DashboardContent() {
             <p>A little more clarity. A little further every day.</p>
           </div>
           <Link href="/" className="button primary">
-            <Icon name="plus" size={17} />
             Join a lecture
+            <PillDot />
           </Link>
         </div>
         {loading && <LoadingState />}
@@ -208,8 +208,8 @@ function DashboardContent() {
                 </section>
                 <section className="study-section">
                   <div className="section-heading">
-                    <h2>A little revision goes a long way.</h2>
-                    <Icon name="spark" />
+                    <h2>Study packs</h2>
+                    <span>{data.studyPacks.length} ready</span>
                   </div>
                   <div className="session-grid">
                     {data.studyPacks.map((pack) => (
@@ -233,7 +233,6 @@ function DashboardContent() {
                 </section>
               </div>
               <aside className="panel profile-panel">
-                <span className="eyebrow">MAKE YOURSELF AT HOME</span>
                 <h2>Your preferences.</h2>
                 <form onSubmit={update}>
                   <div className="form-row">

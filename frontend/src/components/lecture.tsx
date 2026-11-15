@@ -1,7 +1,14 @@
 "use client";
-import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
 import {
+  formatMmSs,
   getSessionAudioUrl,
   type AskAnswerResponse,
   type TranscriptLineDto,
@@ -13,13 +20,13 @@ import {
   EmptyState,
   ErrorState,
   Icon,
-  languageName,
-  PrimaryActionButton,
+  LanguagePill,
 } from "./ui";
 
 export function LiveCaptionCard({
   dark = false,
   language,
+  languageControl,
   line,
   onPlay,
   size = 24,
@@ -27,23 +34,48 @@ export function LiveCaptionCard({
 }: {
   dark?: boolean;
   language: string;
+  /** Replaces the static language pill, e.g. with a LanguageSelector. */
+  languageControl?: ReactNode;
   line?: TranscriptLineDto;
   onPlay: (ms: number) => void;
   size?: number;
   active?: boolean;
 }) {
+  const card = useRef<HTMLElement>(null);
   return (
     <article
+      ref={card}
       className={`caption-card ${dark ? "translated" : "original"} ${active ? "playing" : ""}`}
+      aria-label={dark ? "Translated captions" : "Original captions"}
     >
       <div className="caption-card-top">
-        <span className="caption-language">
-          <Icon name="volume" size={17} />
-          <span>
-            <small>{dark ? "TRANSLATED CAPTIONS" : "ORIGINAL CAPTIONS"}</small>
-            <strong>{languageName(language)}</strong>
-          </span>
-        </span>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Show captions full screen"
+          onClick={() => {
+            if (document.fullscreenElement) void document.exitFullscreen();
+            else void card.current?.requestFullscreen?.().catch(() => {});
+          }}
+        >
+          <Icon name="expand" size={15} />
+        </button>
+        <button
+          type="button"
+          className="icon-button"
+          disabled={!line}
+          aria-label={
+            line
+              ? `Listen from ${formatMmSs(line.offsetMs)}`
+              : "Nothing to listen to yet"
+          }
+          onClick={() => line && onPlay(line.offsetMs)}
+        >
+          <Icon name="volume" size={15} />
+        </button>
+        {languageControl || (
+          <LanguagePill value={language} caption={dark ? "To" : "From"} />
+        )}
         <span className="caption-tools">
           {line && <CopyButton text={line.text} />}
         </span>
@@ -60,20 +92,13 @@ export function LiveCaptionCard({
           <span className="caption-placeholder">
             {dark
               ? "Your translation will appear here."
-              : "Every word, a little clearer."}
+              : "Waiting for the lecturer to speak…"}
           </span>
         )}
       </div>
-      <div className="caption-card-bottom">
-        {line ? (
-          <AudioReceiptChip offsetMs={line.offsetMs} onPlay={onPlay} />
-        ) : (
-          <span>
-            Waiting for {dark ? "translated captions" : "the lecturer"}…
-          </span>
-        )}
-        <span>{dark ? "In your language" : "Lecture audio"}</span>
-      </div>
+      {line && (
+        <time className="caption-time num">{formatMmSs(line.offsetMs)}</time>
+      )}
     </article>
   );
 }
@@ -87,7 +112,7 @@ export function TranscriptFeed({
   lines,
   onPlay,
   active,
-  size = 20,
+  size = 18,
 }: {
   lines: TranscriptLineDto[];
   onPlay: (ms: number) => void;
@@ -106,17 +131,19 @@ export function TranscriptFeed({
           yet.
         </EmptyState>
       ) : (
-        lines.map((line) => (
-          <div
-            key={line.offsetMs}
-            className={`transcript-line ${line.offsetMs === active ? "active" : ""}`}
-          >
-            <AudioReceiptChip offsetMs={line.offsetMs} onPlay={onPlay} />
-            <p dir="auto" style={{ fontSize: size }}>
-              {line.text}
-            </p>
-          </div>
-        ))
+        <div className="transcript-list">
+          {lines.map((line) => (
+            <div
+              key={line.offsetMs}
+              className={`transcript-line ${line.offsetMs === active ? "active" : ""}`}
+            >
+              <AudioReceiptChip offsetMs={line.offsetMs} onPlay={onPlay} />
+              <p dir="auto" style={{ fontSize: size }}>
+                {line.text}
+              </p>
+            </div>
+          ))}
+        </div>
       )}
     </section>
   );
@@ -149,14 +176,18 @@ export function AudioPlaybackControl({
   }
   return (
     <div className="audio-player">
-      <div>
-        <Icon name="headphones" size={18} />
-        <span>Lecture recording</span>
-        <small>
-          {loaded
-            ? "Ready to revisit"
-            : "Available when saved by your lecturer"}
-        </small>
+      <div className="audio-player-head">
+        <span className="icon-chip">
+          <Icon name="headphones" size={15} />
+        </span>
+        <span>
+          <strong>Lecture recording</strong>
+          <small>
+            {loaded
+              ? "Ready to revisit"
+              : "Available when saved by your lecturer"}
+          </small>
+        </span>
       </div>
       <audio
         ref={(el) => {
@@ -181,21 +212,31 @@ export function AudioPlaybackControl({
     </div>
   );
 }
+/**
+ * Ask Levvy as the reference's bottom composer: [leading] [input · send]
+ * [trailing]. The answer card renders just above it.
+ */
 export function AskLevvyPanel({
   code,
   onPlay,
   offsets,
+  leading,
+  trailing,
 }: {
   code: string;
   onPlay: (ms: number) => void;
   offsets: number[];
+  leading?: ReactNode;
+  trailing?: ReactNode;
 }) {
   const [question, setQuestion] = useState("");
+  const [asked, setAsked] = useState("");
   const [answer, setAnswer] = useState<AskAnswerResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (!question.trim() || busy) return;
     setBusy(true);
     setError("");
     try {
@@ -203,11 +244,19 @@ export function AskLevvyPanel({
         method: "POST",
         body: JSON.stringify({ text: question }),
       });
+      setAsked(question);
       setAnswer(data);
+      setQuestion("");
     } catch (e) {
       setError(errorText(e));
     } finally {
       setBusy(false);
+    }
+  }
+  function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      e.currentTarget.form?.requestSubmit();
     }
   }
   const receipts = (
@@ -217,45 +266,31 @@ export function AskLevvyPanel({
   ).filter((n) => Number.isFinite(n) && offsets.includes(n));
   const grounded = answer?.status === "ok" && receipts.length > 0;
   return (
-    <section className="ask-panel" id="ask">
-      <div className="section-heading">
-        <h2>
-          <Icon name="spark" size={18} />
-          Ask Levvy
-        </h2>
-        <span className="mini-badge">AI</span>
-      </div>
-      <p>
-        A little clarity, right when you need it. Answers come from this
-        lecture.
-      </p>
-      <form onSubmit={submit}>
-        <label className="sr-only" htmlFor="question">
-          Your question about this lecture
-        </label>
-        <textarea
-          id="question"
-          required
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="Could you explain that last point?"
-          rows={4}
-          maxLength={2000}
-        />
-        <PrimaryActionButton disabled={busy || !question.trim()}>
-          {busy ? "Checking the lecture…" : "Ask a question"}
-          <Icon name="arrow" size={17} />
-        </PrimaryActionButton>
-      </form>
+    <>
       {error && <ErrorState message={error} />}
-      <div role="status">
+      <div role="status" className="answer-slot">
+        {busy && <p className="answer-pending">Checking the lecture…</p>}
         {answer && (
           <div className="answer-card">
-            <span className={`answer-label ${grounded ? "verified" : ""}`}>
-              {grounded
-                ? "✓ Supported by this lecture"
-                : "Not verified in this lecture"}
-            </span>
+            <div className="answer-head">
+              <span className="icon-chip">
+                <Icon name="spark" size={14} />
+              </span>
+              <span className={`answer-label ${grounded ? "verified" : ""}`}>
+                {grounded
+                  ? "Supported by this lecture"
+                  : "Not verified in this lecture"}
+              </span>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Dismiss answer"
+                onClick={() => setAnswer(null)}
+              >
+                <Icon name="plus" size={14} />
+              </button>
+            </div>
+            {asked && <p className="answer-question">{asked}</p>}
             <p>
               {grounded || answer.status === "not_covered"
                 ? answer.text
@@ -271,11 +306,38 @@ export function AskLevvyPanel({
           </div>
         )}
       </div>
-      <div className="ask-footnote">
-        <Icon name="book" size={14} />
-        Always grounded. Never a guess.
-      </div>
-    </section>
+      <form className="composer" id="ask" onSubmit={submit}>
+        {leading}
+        <div className="composer-field">
+          <label className="sr-only" htmlFor="question">
+            Your question about this lecture
+          </label>
+          <textarea
+            id="question"
+            required
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="Ask about this lecture…"
+            rows={1}
+            maxLength={2000}
+          />
+          <button
+            type="submit"
+            className="send-button"
+            aria-label="Ask a question"
+            disabled={busy || !question.trim()}
+          >
+            {busy ? (
+              <span className="spinner light" />
+            ) : (
+              <Icon name="arrowUp" size={16} />
+            )}
+          </button>
+        </div>
+        {trailing}
+      </form>
+    </>
   );
 }
 export function SessionCard({
@@ -291,20 +353,20 @@ export function SessionCard({
 }) {
   return (
     <article className="session-card">
-      <div className="session-card-icon">
-        <Icon name="book" />
+      <div className="session-card-top">
+        <span className={`status-pill ${live ? "live" : ""}`}>
+          <span />
+          {live ? "In progress" : "Ended"}
+        </span>
+        <span className="num muted">{code}</span>
       </div>
-      <span className="eyebrow">
-        {live ? "LECTURE IN PROGRESS" : "YOUR LECTURE"}
-      </span>
       <h3>
         <Link href={`/session/${code}`}>{title}</Link>
       </h3>
-      <p>Room {code}</p>
       <div className="session-card-footer">
-        <Link href={`/session/${code}`}>
-          {live ? "Join lecture" : "Revisit lecture"}
-          <Icon name="arrow" size={15} />
+        <Link className="button primary small" href={`/session/${code}`}>
+          {live ? "Join lecture" : "Revisit"}
+          <Icon name="arrow" size={14} />
         </Link>
         {children}
       </div>
@@ -322,14 +384,13 @@ export function StudyPackCard({
 }) {
   return (
     <article className="study-card">
-      <Icon name="spark" />
       <h3>
         <Link href={`/session/${code}/pack`}>{title}</Link>
       </h3>
       {children}
-      <Link className="subtle-link" href={`/session/${code}/pack`}>
+      <Link className="pill-link" href={`/session/${code}/pack`}>
         Open study pack
-        <Icon name="arrow" size={16} />
+        <Icon name="arrow" size={14} />
       </Link>
     </article>
   );
