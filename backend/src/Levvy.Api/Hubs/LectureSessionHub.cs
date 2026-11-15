@@ -179,22 +179,66 @@ public sealed class LectureSessionHub(
         foreach (var seg in segments)
         {
             seg.SessionId = room.SessionId;
-            room.AppendSegment(seg);
+            await BroadcastSegmentInternalAsync(room, seg, translator, mediator, ct);
+        }
+        await BroadcastToHostsAsync(room, new { type = "asr_status", state = "ready" }, ct);
+    }
 
-            var ts = TimestampFormatter.FormatMmSs(seg.OffsetMs);
+    /// <summary>
+    /// Broadcasts a finalized caption segment (e.g., from a meeting-bot webhook) to all connected
+    /// viewers in the room and fans out per-viewer translations without duplicating hub logic.
+    /// </summary>
+    public async Task BroadcastExternalCaptionAsync(
+        Guid sessionId,
+        long offsetMs,
+        string text,
+        string sourceLanguage,
+        CancellationToken ct)
+    {
+        if (!_rooms.TryGetValue(sessionId, out var room))
+            return;
 
-            // 1. Broadcast original caption immediately to all viewers
-            await BroadcastJsonAsync(room, new
-            {
-                type = "caption",
-                ts,
-                offsetMs = seg.OffsetMs,
-                text = seg.Text,
-                sourceLanguage = seg.SourceLanguage,
-                final = true
-            }, ct);
+        using var scope = scopeFactory.CreateScope();
+        var translator = scope.ServiceProvider.GetRequiredService<ITranslator>();
 
-            // 2. Publish CaptionFinalized seam (enqueues Hangfire persistence job off the hot loop)
+        var seg = new TranscriptSegment
+        {
+            Id = Guid.NewGuid(),
+            SessionId = sessionId,
+            OffsetMs = offsetMs,
+            Text = text,
+            SourceLanguage = sourceLanguage,
+            CreatedAtUtc = DateTime.UtcNow
+        };
+
+        await BroadcastSegmentInternalAsync(room, seg, translator, mediator: null, ct);
+    }
+
+    private async Task BroadcastSegmentInternalAsync(
+        SessionRoom room,
+        TranscriptSegment seg,
+        ITranslator translator,
+        IMediator? mediator,
+        CancellationToken ct)
+    {
+        room.AppendSegment(seg);
+
+        var ts = TimestampFormatter.FormatMmSs(seg.OffsetMs);
+
+        // 1. Broadcast original caption immediately to all viewers
+        await BroadcastJsonAsync(room, new
+        {
+            type = "caption",
+            ts,
+            offsetMs = seg.OffsetMs,
+            text = seg.Text,
+            sourceLanguage = seg.SourceLanguage,
+            final = true
+        }, ct);
+
+        // 2. Publish CaptionFinalized seam (enqueues Hangfire persistence job off the hot loop)
+        if (mediator is not null)
+        {
             try
             {
                 await mediator.Publish(new CaptionFinalized(room.SessionId, seg.OffsetMs, seg.Text, seg.SourceLanguage), ct);
@@ -203,41 +247,40 @@ public sealed class LectureSessionHub(
             {
                 logger.LogWarning(ex, "CaptionFinalized notification handler failed for session {SessionId}", room.SessionId);
             }
-
-            // 3. Translate once per distinct target language among connected viewers
-            var targetLanguages = room.Clients.Values
-                .Select(c => c.PreferredLanguage)
-                .Where(l => !string.IsNullOrWhiteSpace(l) &&
-                            !string.Equals(l, seg.SourceLanguage, StringComparison.OrdinalIgnoreCase))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            if (targetLanguages.Count > 0)
-            {
-                var translationTasks = targetLanguages.Select(async targetLang =>
-                {
-                    try
-                    {
-                        var translated = await translator.TranslateAsync(seg.Text, targetLang, ct);
-                        await BroadcastToLanguageAsync(room, targetLang, new
-                        {
-                            type = "translation",
-                            @for = targetLang,
-                            ts,
-                            offsetMs = seg.OffsetMs,
-                            text = translated
-                        }, ct);
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogWarning(ex, "Translation to '{Lang}' failed for session {SessionId}", targetLang, room.SessionId);
-                    }
-                });
-
-                await Task.WhenAll(translationTasks);
-            }
         }
-        await BroadcastToHostsAsync(room, new { type = "asr_status", state = "ready" }, ct);
+
+        // 3. Translate once per distinct target language among connected viewers
+        var targetLanguages = room.Clients.Values
+            .Select(c => c.PreferredLanguage)
+            .Where(l => !string.IsNullOrWhiteSpace(l) &&
+                        !string.Equals(l, seg.SourceLanguage, StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (targetLanguages.Count > 0)
+        {
+            var translationTasks = targetLanguages.Select(async targetLang =>
+            {
+                try
+                {
+                    var translated = await translator.TranslateAsync(seg.Text, targetLang, ct);
+                    await BroadcastToLanguageAsync(room, targetLang, new
+                    {
+                        type = "translation",
+                        @for = targetLang,
+                        ts,
+                        offsetMs = seg.OffsetMs,
+                        text = translated
+                    }, ct);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Translation to '{Lang}' failed for session {SessionId}", targetLang, room.SessionId);
+                }
+            });
+
+            await Task.WhenAll(translationTasks);
+        }
     }
 
     private static async Task BroadcastToHostsAsync(SessionRoom room, object payload, CancellationToken ct)

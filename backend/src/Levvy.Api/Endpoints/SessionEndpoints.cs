@@ -1,4 +1,5 @@
 using FluentValidation;
+using Levvy.Api.Hubs;
 using Levvy.Application.Commands;
 using Levvy.Application.Common.Interfaces;
 using Levvy.Application.Queries;
@@ -95,12 +96,14 @@ public static class SessionEndpoints
         HttpRequest http,
         IConfiguration config,
         ISender sender,
+        LectureSessionHub hub,
+        ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
         if (!IsWebhookAuthorized(http, config))
             return Task.FromResult(Results.Unauthorized());
 
-        return DispatchWebhookCommandAsync(id, req, sender, ct);
+        return DispatchWebhookCommandAsync(id, req, sender, hub, loggerFactory, ct);
     }
 
     private static Task<IResult> MeetWebhookRoot(
@@ -108,6 +111,8 @@ public static class SessionEndpoints
         HttpRequest http,
         IConfiguration config,
         ISender sender,
+        LectureSessionHub hub,
+        ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
         if (!IsWebhookAuthorized(http, config))
@@ -117,7 +122,7 @@ public static class SessionEndpoints
         if (sessionId is null)
             return Task.FromResult(Results.Ok(new { status = "webhook_verified" }));
 
-        return DispatchWebhookCommandAsync(sessionId.Value, req, sender, ct);
+        return DispatchWebhookCommandAsync(sessionId.Value, req, sender, hub, loggerFactory, ct);
     }
 
     private static bool IsWebhookAuthorized(HttpRequest http, IConfiguration config)
@@ -137,14 +142,32 @@ public static class SessionEndpoints
         Guid sessionId,
         MeetWebhookRequest req,
         ISender sender,
+        LectureSessionHub hub,
+        ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
+        var logger = loggerFactory.CreateLogger("Levvy.Api.MeetWebhook");
         try
         {
-            var (type, eventName, botId) = NormalizeMeetWebhook(req);
+            var (type, eventName, botId, offsetMs, text, language) = NormalizeMeetWebhook(req);
+            logger.LogInformation(
+                "Received meet webhook for session {SessionId}: type={Type}, event={Event}, botId={BotId}, hasText={HasText}",
+                sessionId, type, eventName, botId, !string.IsNullOrWhiteSpace(text));
+
             var result = await sender.Send(
-                new IngestMeetingWebhookCommand(sessionId, type, eventName, req.OffsetMs, req.Text, req.Language, botId),
+                new IngestMeetingWebhookCommand(sessionId, type, eventName, offsetMs, text, language, botId),
                 ct);
+
+            if (result.Status == "caption_accepted" && !string.IsNullOrWhiteSpace(text))
+            {
+                await hub.BroadcastExternalCaptionAsync(
+                    sessionId,
+                    offsetMs ?? 0,
+                    text,
+                    language ?? "en",
+                    ct);
+            }
+
             return Results.Ok(result);
         }
         catch (KeyNotFoundException ex)
@@ -191,7 +214,7 @@ public static class SessionEndpoints
         return TryGetJsonGuid(nestedEl, propertyName);
     }
 
-    private static (string Type, string? Event, string? BotId) NormalizeMeetWebhook(MeetWebhookRequest req)
+    private static (string Type, string? Event, string? BotId, long? OffsetMs, string? Text, string? Language) NormalizeMeetWebhook(MeetWebhookRequest req)
     {
         var type = string.IsNullOrWhiteSpace(req.Type) && !string.IsNullOrWhiteSpace(req.Event)
             ? "event"
@@ -199,12 +222,46 @@ public static class SessionEndpoints
 
         var botId = req.BotId;
         var eventName = req.Event;
+        var offsetMs = req.OffsetMs;
+        var text = req.Text;
+        var language = req.Language;
 
         if (req.Data is { ValueKind: System.Text.Json.JsonValueKind.Object } dataEl)
         {
             if (string.IsNullOrWhiteSpace(botId))
             {
                 botId = TryGetJsonString(dataEl, "bot_id") ?? TryGetJsonString(dataEl, "id");
+            }
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                text = TryGetJsonString(dataEl, "text") ?? TryGetJsonString(dataEl, "transcript");
+            }
+
+            if (string.IsNullOrWhiteSpace(language))
+            {
+                language = TryGetJsonString(dataEl, "language") ?? TryGetJsonString(dataEl, "language_code");
+            }
+
+            if (offsetMs is null)
+            {
+                if (dataEl.TryGetProperty("offset_ms", out var offsetEl) && offsetEl.TryGetInt64(out var parsedMs))
+                {
+                    offsetMs = parsedMs;
+                }
+                else if (dataEl.TryGetProperty("start_time", out var startEl) && startEl.TryGetDouble(out var startSec))
+                {
+                    offsetMs = (long)Math.Round(Math.Max(0, startSec) * 1000.0);
+                }
+            }
+
+            if ((eventName?.Contains("transcript", StringComparison.OrdinalIgnoreCase) == true) &&
+                !string.IsNullOrWhiteSpace(text))
+            {
+                var isFinal = !dataEl.TryGetProperty("is_final", out var finalEl) ||
+                              finalEl.ValueKind != System.Text.Json.JsonValueKind.False;
+                if (isFinal)
+                    type = "caption";
             }
 
             if (dataEl.TryGetProperty("status", out var statusEl))
@@ -223,7 +280,7 @@ public static class SessionEndpoints
             }
         }
 
-        return (type, eventName, botId);
+        return (type, eventName, botId, offsetMs, text, language);
     }
 
     private static string? TryGetJsonString(System.Text.Json.JsonElement obj, string propertyName)

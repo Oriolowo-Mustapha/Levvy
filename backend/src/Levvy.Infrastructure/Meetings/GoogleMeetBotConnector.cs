@@ -68,6 +68,7 @@ public sealed class GoogleMeetBotConnector(
                 {
                     meeting_url = meetingUrl,
                     bot_name = botName,
+                    transcription_enabled = true,
                     webhook_url = $"{WebhookBaseUrl}/sessions/{sessionId}/meet-webhook",
                     extra = new { session_id = sessionId }
                 };
