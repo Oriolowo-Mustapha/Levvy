@@ -178,8 +178,12 @@ public class GroqLlmClient : ITranslator, ILlmAnswerer
         if (string.IsNullOrWhiteSpace(apiKey))
             throw new InvalidOperationException("GROQ_API_KEY is not configured in .env or environment variables.");
 
-        var primaryModel = _cfg["Groq:AnswerModel"] ?? _cfg["GROQ_ANSWER_MODEL"] ?? "openai/gpt-oss-120b";
-        var fallbackModel = _cfg["Groq:FallbackModel"] ?? _cfg["GROQ_FALLBACK_MODEL"] ?? "llama-3.3-70b-versatile";
+        var primaryModel = NormalizeGroqModel(
+            _cfg["Groq:AnswerModel"] ?? _cfg["GROQ_ANSWER_MODEL"],
+            "openai/gpt-oss-120b");
+        var fallbackModel = NormalizeGroqModel(
+            _cfg["Groq:FallbackModel"] ?? _cfg["GROQ_FALLBACK_MODEL"],
+            "openai/gpt-oss-20b");
 
         try
         {
@@ -191,8 +195,31 @@ public class GroqLlmClient : ITranslator, ILlmAnswerer
             (ex is HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested)) &&
             !string.Equals(primaryModel, fallbackModel, StringComparison.OrdinalIgnoreCase))
         {
-            return await SendChatCompletionAsync(apiKey, fallbackModel, systemPrompt, userPrompt, jsonMode, temperature, ct);
+            try
+            {
+                return await SendChatCompletionAsync(apiKey, fallbackModel, systemPrompt, userPrompt, jsonMode, temperature, ct);
+            }
+            catch (HttpRequestException ex2) when (
+                ex2.StatusCode == System.Net.HttpStatusCode.NotFound &&
+                !string.Equals(fallbackModel, "openai/gpt-oss-20b", StringComparison.OrdinalIgnoreCase))
+            {
+                return await SendChatCompletionAsync(apiKey, "openai/gpt-oss-20b", systemPrompt, userPrompt, jsonMode, temperature, ct);
+            }
         }
+    }
+
+    private static string NormalizeGroqModel(string? configured, string defaultModel)
+    {
+        var model = configured?.Trim();
+        if (string.IsNullOrWhiteSpace(model))
+            return defaultModel;
+
+        return model switch
+        {
+            "gpt-oss-120b" => "openai/gpt-oss-120b",
+            "gpt-oss-20b" => "openai/gpt-oss-20b",
+            _ => model
+        };
     }
 
     private async Task<string> SendChatCompletionAsync(
