@@ -188,7 +188,7 @@ function HostContent() {
     return (
       <>
         <AppHeader active="host" />
-        <main id="main" className="home-main">
+        <main id="main" className="home-top">
           <section className="home-hero">
             <AudioVisualizer hero />
             <h1>

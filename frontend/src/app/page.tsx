@@ -23,6 +23,16 @@ import {
 } from "../lib/client";
 import type { JoinSessionResponse } from "../lib/api";
 import { RecentLecture } from "../components/recent-lecture";
+import {
+  CtaBand,
+  Faq,
+  FeatureBento,
+  HowItWorks,
+  LandingFooter,
+  Personas,
+  ProofBand,
+  ReceiptSection,
+} from "../components/landing";
 
 export default function Home() {
   return (
@@ -159,19 +169,20 @@ function HomeContent() {
   return (
     <>
       <AppHeader active="home" />
-      <main id="main" className="home-main">
-        <section className="home-hero">
-          <AudioVisualizer hero />
-          <h1>
-            Smart Lecture
-            <span>Assistant</span>
-          </h1>
-          <p>
-            Follow lectures with instant captions, translation, and answers
-            grounded in what was said.
-          </p>
-        </section>
-        <form className="composer-card" onSubmit={join}>
+      <main id="main" className="home-page">
+        <div className="home-top">
+          <section className="home-hero">
+            <AudioVisualizer hero />
+            <h1>
+              Every lecture,
+              <span>in your language.</span>
+            </h1>
+            <p>
+              Live captions, instant translation, and answers that cite the
+              exact second they came from. No account needed.
+            </p>
+          </section>
+          <form className="composer-card" id="join" onSubmit={join}>
           <div className="join-mode-tabs" role="tablist" aria-label="Join method">
             <button
               type="button"
@@ -287,6 +298,15 @@ function HomeContent() {
           </button>
         </div>
         <RecentLecture />
+        </div>
+        <HowItWorks />
+        <ReceiptSection />
+        <FeatureBento />
+        <Personas />
+        <ProofBand />
+        <Faq />
+        <CtaBand />
+        <LandingFooter />
       </main>
     </>
   );
