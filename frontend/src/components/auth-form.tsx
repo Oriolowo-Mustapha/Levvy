@@ -129,19 +129,77 @@ function GoogleSignIn({
   );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [rendered, setRendered] = useState(false);
+
+  async function renderGoogleButton(resolvedClientId: string) {
+    const google = await new Promise<GoogleIdentity>((resolve, reject) => {
+      if (window.google) return resolve(window.google);
+      const script = document.createElement("script");
+      script.src = "https://accounts.google.com/gsi/client";
+      script.async = true;
+      script.onload = () =>
+        window.google
+          ? resolve(window.google)
+          : reject(new Error("Google sign-in unavailable."));
+      script.onerror = () =>
+        reject(new Error("Unable to load Google sign-in."));
+      document.head.appendChild(script);
+    });
+    google.accounts.id.initialize({
+      client_id: resolvedClientId,
+      callback: async ({ credential }) => {
+        try {
+          onSuccess(
+            await request<AuthResponseDto>("/auth/google", {
+              method: "POST",
+              body: JSON.stringify({ idToken: credential }),
+            }),
+          );
+        } catch (e) {
+          setError(errorText(e));
+        } finally {
+          setBusy(false);
+        }
+      },
+    });
+    const root = document.getElementById("google-sign-in");
+    if (root) {
+      root.replaceChildren();
+      google.accounts.id.renderButton(root, {
+        type: "standard",
+        theme: "outline",
+        size: "large",
+        shape: "pill",
+      });
+      setRendered(true);
+    }
+  }
 
   useEffect(() => {
-    if (clientId) return;
     let active = true;
-    void request<{ googleClientId?: string }>("/auth/config")
-      .then((cfg) => {
-        if (active && cfg.googleClientId) setClientId(cfg.googleClientId);
-      })
-      .catch(() => {});
+    async function init() {
+      let resolved = clientId;
+      if (!resolved) {
+        try {
+          const cfg = await request<{ googleClientId?: string }>("/auth/config");
+          resolved = cfg.googleClientId || "";
+          if (active && resolved) setClientId(resolved);
+        } catch {
+          return;
+        }
+      }
+      if (!active || !resolved) return;
+      try {
+        await renderGoogleButton(resolved);
+      } catch {
+        // Keep fallback button visible if GIS script fails to preload
+      }
+    }
+    void init();
     return () => {
       active = false;
     };
-  }, [clientId]);
+  }, []);
 
   async function start() {
     setBusy(true);
@@ -157,45 +215,7 @@ function GoogleSignIn({
         throw new Error(
           "Google sign-in is not configured yet. Please use email sign-in.",
         );
-      const google = await new Promise<GoogleIdentity>((resolve, reject) => {
-        if (window.google) return resolve(window.google);
-        const script = document.createElement("script");
-        script.src = "https://accounts.google.com/gsi/client";
-        script.async = true;
-        script.onload = () =>
-          window.google
-            ? resolve(window.google)
-            : reject(new Error("Google sign-in unavailable."));
-        script.onerror = () =>
-          reject(new Error("Unable to load Google sign-in."));
-        document.head.appendChild(script);
-      });
-      google.accounts.id.initialize({
-        client_id: resolvedClientId,
-        callback: async ({ credential }) => {
-          try {
-            onSuccess(
-              await request<AuthResponseDto>("/auth/google", {
-                method: "POST",
-                body: JSON.stringify({ idToken: credential }),
-              }),
-            );
-          } catch (e) {
-            setError(errorText(e));
-          } finally {
-            setBusy(false);
-          }
-        },
-      });
-      const root = document.getElementById("google-sign-in");
-      if (root) {
-        root.replaceChildren();
-        google.accounts.id.renderButton(root, {
-          type: "standard",
-          theme: "outline",
-          size: "large",
-        });
-      }
+      await renderGoogleButton(resolvedClientId);
       setBusy(false);
     } catch (e) {
       setError(errorText(e));
@@ -204,14 +224,16 @@ function GoogleSignIn({
   }
   return (
     <div className="google-auth">
-      <button
-        type="button"
-        className="button secondary"
-        disabled={busy}
-        onClick={() => void start()}
-      >
-        {busy ? "Loading Google…" : "Continue with Google"}
-      </button>
+      {!rendered && (
+        <button
+          type="button"
+          className="button secondary"
+          disabled={busy}
+          onClick={() => void start()}
+        >
+          {busy ? "Loading Google…" : "Continue with Google"}
+        </button>
+      )}
       <div id="google-sign-in" />
       {error && <ErrorState message={error} />}
     </div>
