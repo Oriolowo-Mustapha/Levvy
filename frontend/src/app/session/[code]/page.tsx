@@ -118,14 +118,15 @@ function SessionContent({ code }: { code: string }) {
           <section
             id="captions"
             className="caption-stack"
-            aria-label="Latest original and translated speech"
+            aria-label="Live original and translated speech"
           >
             <OriginalTranscriptCard
               language={lecture.sourceLanguage}
-              line={last}
+              lines={lecture.lines}
               size={size}
               onPlay={onPlay}
               active={last?.offsetMs === active}
+              activeOffset={active}
             />
             <div className="caption-bridge">
               <button
@@ -152,16 +153,20 @@ function SessionContent({ code }: { code: string }) {
                   }}
                 />
               }
-              line={
-                translation && last
-                  ? { ...last, text: translation }
-                  : language === lecture.sourceLanguage
-                    ? last
-                    : undefined
-              }
+              lines={lecture.lines.map((item) => {
+                const translatedText =
+                  lecture.translations[`${language}:${item.offsetMs}`];
+                return {
+                  ...item,
+                  text:
+                    translatedText ??
+                    (language === lecture.sourceLanguage ? item.text : "…"),
+                };
+              })}
               size={size}
               onPlay={onPlay}
               active={last?.offsetMs === active}
+              activeOffset={active}
             />
           </section>
           <AskLevvyPanel

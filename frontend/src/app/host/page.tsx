@@ -9,7 +9,7 @@ import {
   ConnectionIndicator,
   ErrorState,
   Icon,
-  LanguagePairSelector,
+  LanguageSelector,
   LevelDots,
   PillDot,
   PrimaryActionButton,
@@ -25,9 +25,10 @@ import {
   preference,
   readAuth,
   request,
+  storePreference,
   uploadAudio,
 } from "../../lib/client";
-import type { CreateSessionResponse } from "../../lib/api";
+import { formatMmSs, type CreateSessionResponse } from "../../lib/api";
 
 export default function HostPage() {
   return (
@@ -56,6 +57,12 @@ function HostContent() {
   const pendingBlob = useRef<Blob | null>(null);
   const lecture = useLecture(created?.code || "", target, "host");
   const recorder = useRecorder(lecture.send, source);
+  const transcriptBox = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = transcriptBox.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [lecture.lines.length]);
   useEffect(() => {
     if (confirm) dialog.current?.showModal();
     else dialog.current?.close();
@@ -148,7 +155,6 @@ function HostContent() {
     }
   }
   const locked = recorder.recording || busy;
-  const latest = lecture.lines.at(-1)?.text;
   const errors = [error, recorder.error, lecture.error].filter(Boolean);
   if (!created)
     return (
@@ -173,11 +179,15 @@ function HostContent() {
             </div>
           )}
           <form className="composer-card" onSubmit={create}>
-            <LanguagePairSelector
-              source={source}
-              target={target}
-              onSource={setSource}
-              onTarget={setTarget}
+            <LanguageSelector
+              label="Spoken lecture language"
+              caption="Speaker language"
+              value={source}
+              onChange={(v) => {
+                setSource(v);
+                storePreference("source", v);
+              }}
+              includeAuto
             />
             <label className="entry-box">
               <span className="entry-label">Lecture title</span>
@@ -206,121 +216,190 @@ function HostContent() {
         </main>
       </>
     );
+  const fullTranscript = lecture.lines
+    .map((line) => line.text)
+    .filter(Boolean)
+    .join(" ");
   return (
     <>
       <AppHeader active="host" />
       <main id="main" className="host-main">
-        <section className="listening-panel" aria-labelledby="host-title">
+        <section className="host-console" aria-labelledby="host-title">
           <div className="listening-head">
             <RecordingStatus
               state={
                 ended
-                  ? "Lecture complete"
-                  : recorder.recording
-                    ? "Listening…"
-                    : recorder.state
+                  ? "Lecture ended"
+                  : recorder.paused
+                    ? "Paused"
+                    : recorder.recording
+                      ? "On air — Listening…"
+                      : recorder.state
               }
-              recording={recorder.recording && recorder.level > 0.01}
+              recording={
+                recorder.recording && !recorder.paused && recorder.level > 0.01
+              }
             />
-            <ConnectionIndicator state={lecture.connection} />
-          </div>
-          <h1 id="host-title" className="listening-title">
-            {title}
-          </h1>
-          <p className="listening-text" aria-live="polite">
-            {latest || "Your words will appear here as you speak."}
-          </p>
-          <AudioVisualizer level={recorder.level} />
-          <LevelDots level={recorder.recording ? recorder.level : 0} />
-          <div className="recording-readout">
-            <RecordingTimer ms={recorder.elapsed} />
-            <span>
-              {recorder.level > 0.01
-                ? "Audio input detected"
-                : recorder.recording
-                  ? "Waiting for audible input"
-                  : "Microphone is off"}
-            </span>
-          </div>
-          <LanguagePairSelector
-            source={source}
-            target={target}
-            onSource={(v) => {
-              if (!locked) setSource(v);
-            }}
-            sourceDisabled={locked || ended}
-            onTarget={setTarget}
-          />
-          {audioSource === "upload" ? (
-            <label className="upload-label">
-              Choose WebM audio
-              <input
-                type="file"
-                accept="audio/webm,.webm"
-                disabled={busy || ended}
-                onChange={(e) => void upload(e.target.files?.[0])}
-              />
-              <small>
-                Upload saves playback audio. This endpoint does not transcribe
-                files.
-              </small>
-            </label>
-          ) : (
-            <div className="listening-bar">
-              <Link
-                href={`/session/${created.code}`}
-                className="icon-button"
-                aria-label="Open student view"
-                title="Open student view"
-              >
-                <Icon name="headphones" size={16} />
-              </Link>
-              <PrimaryActionButton
-                disabled={
-                  busy ||
-                  ended ||
-                  saved ||
-                  lecture.connection !== "Connected" ||
-                  recorder.recording
-                }
-                onClick={() => void recorder.start(audioSource)}
-              >
-                {recorder.recording ? "Listening…" : "Start recording"}
-                <PillDot />
-              </PrimaryActionButton>
-              <button
-                type="button"
-                className="icon-button"
-                aria-label="Stop & save recording"
-                title={busy ? "Saving…" : "Stop & save recording"}
-                disabled={
-                  busy ||
-                  ended ||
-                  (!recorder.recording &&
-                    !hasPending &&
-                    recorder.elapsed === 0) ||
-                  saved
-                }
-                onClick={() => void save()}
-              >
-                <Icon name="stop" size={14} />
-              </button>
+            <div className="host-header-meta">
+              <span className="host-stat-pill">
+                <strong className="num">
+                  {lecture.session?.participantCount ?? 0}
+                </strong>{" "}
+                students
+              </span>
+              <span className="host-stat-pill">
+                <strong className="num">{lecture.lines.length}</strong> segments
+              </span>
+              <ConnectionIndicator state={lecture.connection} />
             </div>
-          )}
-          <p className="asr-status" role="status">
-            {saved
-              ? "Recording saved. You can end the lecture to generate a study pack."
-              : lecture.asrStatus !== "Waiting for audio"
-                ? lecture.asrStatus
-                : lecture.lastCaption
-                  ? "Captions received from transcription service."
-                  : recorder.recording
-                    ? "Processing audio — awaiting first captions."
-                    : "Audio permission is requested only when you start."}
-          </p>
-          {errors.map((message, i) => (
-            <ErrorState key={i} message={message} />
-          ))}
+          </div>
+
+          <div className="host-stage-card">
+            <div className="host-stage-top">
+              <div>
+                <span className="host-kicker">Lecturer broadcast console</span>
+                <h1 id="host-title" className="host-stage-title">
+                  {title}
+                </h1>
+              </div>
+              <div className="recording-readout">
+                <RecordingTimer ms={recorder.elapsed} />
+              </div>
+            </div>
+
+            <div className="host-meter-row">
+              <AudioVisualizer
+                level={recorder.paused ? 0 : recorder.level}
+              />
+              <LevelDots
+                level={
+                  recorder.recording && !recorder.paused ? recorder.level : 0
+                }
+              />
+              <span className="muted">
+                {recorder.paused
+                  ? "Recording paused — resume whenever you are ready"
+                  : recorder.level > 0.01
+                    ? "Voice detected"
+                    : recorder.recording
+                      ? "Listening for speech…"
+                      : "Press Start recording when you begin"}
+              </span>
+            </div>
+
+            {audioSource === "upload" ? (
+              <label className="upload-label">
+                Choose WebM audio
+                <input
+                  type="file"
+                  accept="audio/webm,.webm"
+                  disabled={busy || ended}
+                  onChange={(e) => void upload(e.target.files?.[0])}
+                />
+                <small>
+                  Upload saves playback audio. This endpoint does not transcribe
+                  files.
+                </small>
+              </label>
+            ) : (
+              <div className="listening-bar">
+                {!recorder.recording ? (
+                  <PrimaryActionButton
+                    disabled={
+                      busy ||
+                      ended ||
+                      saved ||
+                      lecture.connection !== "Connected"
+                    }
+                    onClick={() => void recorder.start(audioSource)}
+                  >
+                    Start recording
+                    <PillDot />
+                  </PrimaryActionButton>
+                ) : (
+                  <PrimaryActionButton
+                    disabled={busy || ended || saved}
+                    onClick={() =>
+                      recorder.paused ? recorder.resume() : recorder.pause()
+                    }
+                  >
+                    <Icon
+                      name={recorder.paused ? "play" : "pause"}
+                      size={14}
+                    />
+                    {recorder.paused ? "Resume recording" : "Pause recording"}
+                  </PrimaryActionButton>
+                )}
+                <button
+                  type="button"
+                  className="button secondary"
+                  aria-label="Stop and save recording"
+                  disabled={
+                    busy ||
+                    ended ||
+                    (!recorder.recording &&
+                      !hasPending &&
+                      recorder.elapsed === 0) ||
+                    saved
+                  }
+                  onClick={() => void save()}
+                >
+                  <Icon name="stop" size={13} />
+                  {busy ? "Saving…" : saved ? "Saved" : "Stop & save"}
+                </button>
+              </div>
+            )}
+
+            <p className="asr-status" role="status">
+              {saved
+                ? "Recording saved. End the lecture when you are ready to generate the study pack."
+                : recorder.paused
+                  ? "Paused — audio chunks are not being sent while paused."
+                  : lecture.asrStatus !== "Waiting for audio"
+                    ? lecture.asrStatus
+                    : lecture.lastCaption
+                      ? "Live captions streaming to your students."
+                      : recorder.recording
+                        ? "Processing audio — awaiting first captions."
+                        : "Audio permission is requested only when you start."}
+            </p>
+            {errors.map((message, i) => (
+              <ErrorState key={i} message={message} />
+            ))}
+          </div>
+
+          <section
+            className="host-transcript-card"
+            aria-label="Live speaker transcript"
+          >
+            <div className="section-heading">
+              <h2>What students are seeing (live transcript)</h2>
+              <div className="host-transcript-actions">
+                <span className="muted num">
+                  {lecture.lines.length} segments
+                </span>
+                {fullTranscript && <CopyButton text={fullTranscript} />}
+              </div>
+            </div>
+            <div ref={transcriptBox} className="host-transcript-stream">
+              {lecture.lines.length === 0 ? (
+                <p className="muted">
+                  Your live transcript will appear here continuously as you
+                  speak, so you can verify everything students are reading.
+                </p>
+              ) : (
+                lecture.lines.map((line, idx) => (
+                  <div
+                    key={line.offsetMs}
+                    className={`host-transcript-line${idx === lecture.lines.length - 1 ? " latest" : ""}`}
+                  >
+                    <time className="num">{formatMmSs(line.offsetMs)}</time>
+                    <span>{line.text}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
         </section>
         <aside className="host-controls">
           <section className="panel join-details">
@@ -337,6 +416,22 @@ function HostContent() {
             <p className="muted">
               {lecture.session?.participantCount ?? 0} participants in this room
             </p>
+          </section>
+          <section className="panel source-panel">
+            <h2>Speech language</h2>
+            <LanguageSelector
+              label="Spoken lecture language"
+              caption="Deepgram Nova-3"
+              value={source}
+              onChange={(v) => {
+                if (!locked) {
+                  setSource(v);
+                  storePreference("source", v);
+                }
+              }}
+              disabled={locked || ended}
+              includeAuto
+            />
           </section>
           <section className="panel source-panel">
             <h2>Audio source</h2>

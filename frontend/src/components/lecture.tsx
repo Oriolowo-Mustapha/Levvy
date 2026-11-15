@@ -1,5 +1,6 @@
 "use client";
 import {
+  useEffect,
   useRef,
   useState,
   type FormEvent,
@@ -33,20 +34,38 @@ export function LiveCaptionCard({
   language,
   languageControl,
   line,
+  lines,
   onPlay,
   size = 24,
   active = false,
+  activeOffset = null,
 }: {
   dark?: boolean;
   language: string;
   /** Replaces the static language pill, e.g. with a LanguageSelector. */
   languageControl?: ReactNode;
   line?: TranscriptLineDto;
+  lines?: TranscriptLineDto[];
   onPlay: (ms: number) => void;
   size?: number;
   active?: boolean;
+  activeOffset?: number | null;
 }) {
   const card = useRef<HTMLElement>(null);
+  const streamRef = useRef<HTMLDivElement>(null);
+  const items = lines && lines.length > 0 ? lines : line ? [line] : [];
+  const latest = items[items.length - 1];
+  const fullText = items
+    .map((item) => item.text)
+    .filter(Boolean)
+    .join(" ");
+
+  useEffect(() => {
+    const el = streamRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [items.length, latest?.text]);
+
   return (
     <article
       ref={card}
@@ -68,13 +87,13 @@ export function LiveCaptionCard({
         <button
           type="button"
           className="icon-button"
-          disabled={!line}
+          disabled={!latest}
           aria-label={
-            line
-              ? `Listen from ${formatMmSs(line.offsetMs)}`
+            latest
+              ? `Listen from ${formatMmSs(latest.offsetMs)}`
               : "Nothing to listen to yet"
           }
-          onClick={() => line && onPlay(line.offsetMs)}
+          onClick={() => latest && onPlay(latest.offsetMs)}
         >
           <Icon name="volume" size={15} />
         </button>
@@ -82,18 +101,34 @@ export function LiveCaptionCard({
           <LanguagePill value={language} caption={dark ? "To" : "From"} />
         )}
         <span className="caption-tools">
-          {line && <CopyButton text={line.text} />}
+          {fullText && <CopyButton text={fullText} />}
         </span>
       </div>
       <div
-        className="caption-text"
+        ref={streamRef}
+        className="caption-text caption-stream"
         aria-live="polite"
-        aria-atomic="true"
+        aria-atomic="false"
         dir="auto"
         lang={language === "auto" ? undefined : language}
         style={{ fontSize: size }}
       >
-        {line?.text || (
+        {items.length > 0 ? (
+          items.map((item, idx) => {
+            const isLatest = idx === items.length - 1;
+            const isPlaying = activeOffset === item.offsetMs;
+            return (
+              <span
+                key={item.offsetMs}
+                className={`caption-segment${isLatest ? " latest" : ""}${isPlaying ? " playing" : ""}`}
+                onClick={() => onPlay(item.offsetMs)}
+                title={`Play from ${formatMmSs(item.offsetMs)}`}
+              >
+                {item.text}{" "}
+              </span>
+            );
+          })
+        ) : (
           <span className="caption-placeholder">
             {dark
               ? "Your translation will appear here."
@@ -101,8 +136,8 @@ export function LiveCaptionCard({
           </span>
         )}
       </div>
-      {line && (
-        <time className="caption-time num">{formatMmSs(line.offsetMs)}</time>
+      {latest && (
+        <time className="caption-time num">{formatMmSs(latest.offsetMs)}</time>
       )}
     </article>
   );

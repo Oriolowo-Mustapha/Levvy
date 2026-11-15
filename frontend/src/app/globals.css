@@ -1829,6 +1829,146 @@ h3 {
     padding-right: 10px;
   }
 }
+.caption-stream {
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 6px;
+  scroll-behavior: smooth;
+}
+.caption-segment {
+  cursor: pointer;
+  opacity: 0.58;
+  transition: opacity 0.15s ease;
+}
+.caption-segment:hover {
+  opacity: 0.9;
+}
+.caption-segment.latest,
+.caption-segment.playing {
+  opacity: 1;
+}
+.caption-card.translated .caption-segment {
+  opacity: 0.65;
+}
+.caption-card.translated .caption-segment.latest,
+.caption-card.translated .caption-segment.playing {
+  opacity: 1;
+}
+.host-console {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.host-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.host-stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 12px;
+  color: var(--muted);
+  box-shadow: var(--shadow-sm);
+}
+.host-stat-pill strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+.host-stage-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 28px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+.host-stage-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.host-kicker {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.host-stage-title {
+  margin: 0;
+  font-size: clamp(24px, 3vw, 34px);
+  line-height: 1.15;
+}
+.host-meter-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+.host-transcript-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px 28px;
+  border-radius: var(--radius-lg);
+  background: var(--dark);
+  color: #fff;
+  box-shadow: var(--shadow-md);
+}
+.host-transcript-card h2 {
+  margin: 0;
+  font-size: 15px;
+  color: #fff;
+}
+.host-transcript-card .muted {
+  color: rgba(255, 255, 255, 0.6);
+}
+.host-transcript-card .icon-button {
+  color: rgba(255, 255, 255, 0.85);
+}
+.host-transcript-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.host-transcript-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+.host-transcript-line {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 15px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.7);
+}
+.host-transcript-line time {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+}
+.host-transcript-line.latest {
+  color: #fff;
+  font-weight: 500;
+}
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

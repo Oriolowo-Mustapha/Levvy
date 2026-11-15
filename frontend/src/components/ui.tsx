@@ -19,10 +19,35 @@ export const languages = [
   ["hi", "हिन्दी"],
   ["ta", "தமிழ்"],
   ["de", "Deutsch"],
+  ["pt", "Português"],
+  ["it", "Italiano"],
+  ["nl", "Nederlands"],
+  ["ja", "日本語"],
+  ["ko", "한국어"],
+  ["zh", "中文"],
+  ["ru", "Русский"],
+  ["tr", "Türkçe"],
+  ["uk", "Українська"],
+  ["pl", "Polski"],
+  ["vi", "Tiếng Việt"],
+  ["id", "Bahasa Indonesia"],
+  ["sv", "Svenska"],
+  ["da", "Dansk"],
+  ["no", "Norsk"],
+  ["fi", "Suomi"],
+  ["el", "Ελληνικά"],
+  ["cs", "Čeština"],
+  ["ro", "Română"],
+  ["hu", "Magyar"],
+  ["bg", "Български"],
+  ["sk", "Slovenčina"],
+  ["ca", "Català"],
+  ["ms", "Bahasa Melayu"],
+  ["th", "ไทย"],
 ] as const;
 export const languageName = (code: string) =>
   languages.find(([id]) => id === code)?.[1] ||
-  (code === "auto" ? "Original speech" : code);
+  (code === "auto" || code === "multi" ? "Auto-detect (Deepgram)" : code);
 const subscribeReady = () => () => {};
 export function BrowserReady({ children }: { children: ReactNode }) {
   const ready = useSyncExternalStore(
@@ -55,6 +80,12 @@ export function Icon({ name, size = 20 }: { name: string; size?: number }) {
     ),
     swap: <path d="M4 8h15l-4-4M20 16H5l4 4" />,
     play: <path d="m9 5 11 7-11 7z" />,
+    pause: (
+      <>
+        <rect x="6" y="5" width="4" height="14" rx="1" />
+        <rect x="14" y="5" width="4" height="14" rx="1" />
+      </>
+    ),
     stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
     headphones: (
       <>
@@ -235,6 +266,7 @@ export function LanguageSelector({
   label = "Caption language",
   caption,
   disabled = false,
+  includeAuto = false,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -242,6 +274,7 @@ export function LanguageSelector({
   /** Short visible hint ("From", "To"); defaults to the accessible label. */
   caption?: string;
   disabled?: boolean;
+  includeAuto?: boolean;
 }) {
   return (
     <label className={`language ${disabled ? "disabled" : ""}`}>
@@ -258,6 +291,7 @@ export function LanguageSelector({
         onChange={(e) => onChange(e.target.value)}
         aria-label={label}
       >
+        {includeAuto && <option value="auto">Auto-detect (Deepgram)</option>}
         {languages.map(([id, name]) => (
           <option key={id} value={id}>
             {name}
@@ -288,12 +322,13 @@ export function LanguagePairSelector({
         value={source}
         onChange={onSource}
         disabled={sourceDisabled}
+        includeAuto
       />
       <button
         className="swap-button"
         aria-label="Swap languages"
         type="button"
-        disabled={sourceDisabled}
+        disabled={sourceDisabled || source === "auto"}
         onClick={() => {
           onSource(target);
           onTarget(source);
