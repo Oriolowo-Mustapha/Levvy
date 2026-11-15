@@ -21,7 +21,11 @@ import {
   saveAuth,
   storePreference,
 } from "../../lib/client";
-import type { UserDashboardDto, UserProfileDto } from "../../lib/api";
+import type {
+  CreateSessionResponse,
+  UserDashboardDto,
+  UserProfileDto,
+} from "../../lib/api";
 
 export default function DashboardPage() {
   return (
@@ -40,6 +44,11 @@ function DashboardContent() {
   const [filter, setFilter] = useState("all");
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [botTitle, setBotTitle] = useState("");
+  const [botUrl, setBotUrl] = useState("");
+  const [botBusy, setBotBusy] = useState(false);
+  const [botError, setBotError] = useState("");
+  const [botRoom, setBotRoom] = useState<CreateSessionResponse | null>(null);
   async function load() {
     try {
       const result = await request<UserDashboardDto>("/users/me/dashboard");
@@ -91,6 +100,34 @@ function DashboardContent() {
       setBusy(false);
     }
   }
+  async function dispatchBot(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!data || !botTitle.trim() || !botUrl.trim()) return;
+    setBotBusy(true);
+    setBotError("");
+    setBotRoom(null);
+    try {
+      const created = await request<CreateSessionResponse>(
+        "/sessions/online-class",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            title: botTitle.trim(),
+            meetingUrl: botUrl.trim(),
+            hostId: data.profile.id,
+          }),
+        },
+      );
+      setBotRoom(created);
+      setBotTitle("");
+      setBotUrl("");
+      void load();
+    } catch (e) {
+      setBotError(errorText(e));
+    } finally {
+      setBotBusy(false);
+    }
+  }
   const sessions = data
     ? [
         ...new Map(
@@ -118,12 +155,24 @@ function DashboardContent() {
                 ? `Hello, ${data.profile.firstName}.`
                 : "Your learning, all together."}
             </h1>
-            <p>A little more clarity. A little further every day.</p>
+            <p>
+              {data && (data.profile.department || data.profile.institution)
+                ? [data.profile.department, data.profile.institution]
+                    .filter(Boolean)
+                    .join(" · ")
+                : "A little more clarity. A little further every day."}
+            </p>
           </div>
-          <Link href="/" className="button primary">
-            Join a lecture
-            <PillDot />
-          </Link>
+          <div className="pill-switch">
+            <Link href="/host" className="button secondary">
+              Host a lecture
+              <Icon name="mic" size={15} />
+            </Link>
+            <Link href="/" className="button primary">
+              Join a lecture
+              <PillDot />
+            </Link>
+          </div>
         </div>
         {loading && <LoadingState />}
         {error && <ErrorState message={error} retry={() => void load()} />}
@@ -159,6 +208,52 @@ function DashboardContent() {
             </section>
             <div className="dashboard-grid">
               <div>
+                <section className="panel" style={{ marginBottom: 24 }}>
+                  <div className="section-heading">
+                    <h2>Send Levvy to a meeting</h2>
+                    <span>Zoom · Google Meet · Teams</span>
+                  </div>
+                  <form onSubmit={dispatchBot}>
+                    <div className="form-row">
+                      <label>
+                        Lecture or class title
+                        <input
+                          required
+                          maxLength={200}
+                          value={botTitle}
+                          onChange={(e) => setBotTitle(e.target.value)}
+                          placeholder="e.g. CSC 301 Algorithms"
+                        />
+                      </label>
+                      <label>
+                        Meeting URL
+                        <input
+                          type="url"
+                          required
+                          value={botUrl}
+                          onChange={(e) => setBotUrl(e.target.value)}
+                          placeholder="https://zoom.us/j/... or meet.google.com/..."
+                        />
+                      </label>
+                    </div>
+                    {botError && <ErrorState message={botError} />}
+                    <div className="pill-switch">
+                      <PrimaryActionButton disabled={botBusy}>
+                        {botBusy ? "Dispatching bot…" : "Send Levvy bot"}
+                        <PillDot />
+                      </PrimaryActionButton>
+                    </div>
+                  </form>
+                  {botRoom && (
+                    <div className="notice" role="status">
+                      Bot dispatched! Room code:{" "}
+                      <strong className="num">{botRoom.code}</strong> ·{" "}
+                      <Link href={`/session/${botRoom.code}`}>
+                        Open live captions →
+                      </Link>
+                    </div>
+                  )}
+                </section>
                 <section>
                   <div className="section-heading">
                     <h2>Your lectures</h2>
@@ -233,7 +328,28 @@ function DashboardContent() {
                 </section>
               </div>
               <aside className="panel profile-panel">
-                <h2>Your preferences.</h2>
+                <div className="section-heading">
+                  <h2>Account</h2>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => {
+                      sessionStorage.removeItem("levvy.auth");
+                      router.push("/");
+                    }}
+                  >
+                    Sign out
+                  </button>
+                </div>
+                <p className="muted" style={{ marginBottom: 16 }}>
+                  {data.profile.email} ·{" "}
+                  {data.profile.role === "instructor"
+                    ? "Instructor"
+                    : "Student"}{" "}
+                  ·{" "}
+                  {data.profile.authProvider === "google" ? "Google" : "Email"}
+                </p>
+                <h3>Preferences</h3>
                 <form onSubmit={update}>
                   <div className="form-row">
                     <label>
@@ -313,15 +429,6 @@ function DashboardContent() {
                     {saved ? "Your preferences are saved." : ""}
                   </p>
                 </form>
-                <button
-                  className="text-button"
-                  onClick={() => {
-                    sessionStorage.removeItem("levvy.auth");
-                    router.push("/");
-                  }}
-                >
-                  Sign out
-                </button>
               </aside>
             </div>
           </>
