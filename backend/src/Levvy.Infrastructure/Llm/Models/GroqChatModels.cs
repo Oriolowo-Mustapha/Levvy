@@ -39,6 +39,18 @@ internal sealed class StudyPackLlmDto
 
     [JsonPropertyName("flashcards")]
     public List<FlashcardLlmDto>? Flashcards { get; set; }
+
+    [JsonPropertyName("parts")]
+    public List<PartLlmDto>? Parts { get; set; }
+}
+
+internal sealed class PartLlmDto
+{
+    [JsonPropertyName("title")]
+    public string? Title { get; set; }
+
+    [JsonPropertyName("startOffsetMs")]
+    public long StartOffsetMs { get; set; }
 }
 
 internal sealed class FlashcardLlmDto

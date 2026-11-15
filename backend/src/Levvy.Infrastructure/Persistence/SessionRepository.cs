@@ -17,6 +17,8 @@ public class SessionRepository(LevvyDbContext db) : ISessionRepository
                     .ThenInclude(a => a!.Citations)
             .Include(s => s.StudyPack)
                 .ThenInclude(p => p!.Flashcards)
+            .Include(s => s.StudyPack)
+                .ThenInclude(p => p!.Parts)
             .AsSplitQuery() // Audit fix (M5): avoid cartesian blow-up on the multi-include fan-out.
             .FirstOrDefaultAsync(s => s.Code == normalized, ct);
     }

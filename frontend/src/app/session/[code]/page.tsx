@@ -20,6 +20,7 @@ import {
   TranslatedTranscriptCard,
 } from "../../../components/lecture";
 import { useLecture } from "../../../lib/use-lecture";
+import type { StudyPackPartDto } from "../../../lib/api";
 import {
   preference,
   readAuth,
@@ -56,6 +57,20 @@ function SessionContent({ code }: { code: string }) {
   const ttsAudio = useRef<HTMLAudioElement | null>(null);
   const play = useRef<(ms: number) => void>(() => {});
   const lecture = useLecture(code, language);
+  // Topic parts live in the study pack; fetch them once the class has ended
+  // so the transcript rail can show chapter headers. Optional navigation:
+  // a failed fetch must never block the rail.
+  const [parts, setParts] = useState<StudyPackPartDto[]>([]);
+  useEffect(() => {
+    if (lecture.session?.isLive !== false) return;
+    const controller = new AbortController();
+    request<{ parts?: StudyPackPartDto[] }>(`${roomPath(code)}/pack`, {
+      signal: controller.signal,
+    })
+      .then((pack) => setParts(pack.parts ?? []))
+      .catch(() => {});
+    return () => controller.abort();
+  }, [code, lecture.session?.isLive]);
   useEffect(
     () => () => {
       ttsAudio.current?.pause();
@@ -271,6 +286,7 @@ function SessionContent({ code }: { code: string }) {
             lines={lecture.lines}
             onPlay={onPlay}
             active={active}
+            parts={parts}
           />
         </aside>
       </main>

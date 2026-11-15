@@ -24,6 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Levvy.Application\Levvy.Application.csproj" />
     <ProjectReference Include="..\..\src\Levvy.Infrastructure\Levvy.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Levvy.Api\Levvy.Api.csproj" />
   </ItemGroup>
 
 </Project>

@@ -21,7 +21,11 @@ public sealed class GetStudyPackByCodeQueryHandler(ISessionRepository repo)
             .OrderBy(f => f.SourceOffsetMs)
             .Select(f => new StudyPackFlashcardDto(f.Id, f.Front, f.Back, f.SourceOffsetMs))
             .ToList() ?? new List<StudyPackFlashcardDto>();
+        var parts = session.StudyPack?.Parts
+            .OrderBy(p => p.Ordinal)
+            .Select(p => new StudyPackPartDto(p.Id, p.Title, p.StartOffsetMs, p.Ordinal))
+            .ToList() ?? new List<StudyPackPartDto>();
 
-        return new StudyPackDto(session.Id, session.Code, session.Title, summary, cards, transcript);
+        return new StudyPackDto(session.Id, session.Code, session.Title, summary, cards, transcript, parts);
     }
 }

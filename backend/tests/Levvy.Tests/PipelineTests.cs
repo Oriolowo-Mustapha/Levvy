@@ -155,7 +155,8 @@ public class PipelineTests
             var offset = transcript.FirstOrDefault()?.OffsetMs ?? 0;
             return Task.FromResult(new GeneratedStudyPackResult(
                 "Summary citing [41:47]",
-                new[] { new GeneratedFlashcardItem("Substitutes?", "Coffee and tea", offset) }));
+                new[] { new GeneratedFlashcardItem("Substitutes?", "Coffee and tea", offset) },
+                Array.Empty<GeneratedPartItem>()));
         }
     }
 }

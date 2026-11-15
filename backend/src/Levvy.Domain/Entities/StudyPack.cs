@@ -10,5 +10,6 @@ public class StudyPack
     public Guid SessionId { get; set; }
     public string Summary { get; set; } = default!;
     public ICollection<Flashcard> Flashcards { get; set; } = new List<Flashcard>();
+    public ICollection<StudyPackPart> Parts { get; set; } = new List<StudyPackPart>();
     public DateTime GeneratedAtUtc { get; set; }
 }

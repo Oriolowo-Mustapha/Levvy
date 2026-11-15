@@ -66,7 +66,7 @@ public static class GroundingVerifier
         var ordered = transcript.OrderBy(s => s.OffsetMs).ToList();
         var cleaned = StripMarkdownCodeFence(rawJson);
         if (string.IsNullOrWhiteSpace(cleaned) || ordered.Count == 0)
-            return new GeneratedStudyPackResult("Study pack unavailable.", Array.Empty<GeneratedFlashcardItem>());
+            return new GeneratedStudyPackResult("Study pack unavailable.", Array.Empty<GeneratedFlashcardItem>(), Array.Empty<GeneratedPartItem>());
 
         StudyPackLlmDto? dto;
         try
@@ -75,11 +75,11 @@ public static class GroundingVerifier
         }
         catch (JsonException)
         {
-            return new GeneratedStudyPackResult("Study pack unavailable.", Array.Empty<GeneratedFlashcardItem>());
+            return new GeneratedStudyPackResult("Study pack unavailable.", Array.Empty<GeneratedFlashcardItem>(), Array.Empty<GeneratedPartItem>());
         }
 
         if (dto is null)
-            return new GeneratedStudyPackResult("Study pack unavailable.", Array.Empty<GeneratedFlashcardItem>());
+            return new GeneratedStudyPackResult("Study pack unavailable.", Array.Empty<GeneratedFlashcardItem>(), Array.Empty<GeneratedPartItem>());
 
         var validCards = new List<GeneratedFlashcardItem>();
         if (dto.Flashcards is not null)
@@ -104,6 +104,27 @@ public static class GroundingVerifier
             ? $"Lecture covered {ordered.Count} segments through {TimestampFormatter.FormatMmSs(ordered[^1].OffsetMs)}."
             : dto.Summary.Trim();
 
+        // Topic parts are navigational, but still grounded: every part must
+        // start at a real transcript offset, deduped and ordered, max 12.
+        var validParts = new List<GeneratedPartItem>();
+        if (dto.Parts is not null)
+        {
+            var seenPartOffsets = new HashSet<long>();
+            foreach (var part in dto.Parts)
+            {
+                if (string.IsNullOrWhiteSpace(part.Title))
+                    continue;
+
+                var snappedPart = SnapToTranscriptOffset(part.StartOffsetMs, ordered);
+                if (snappedPart.HasValue && seenPartOffsets.Add(snappedPart.Value))
+                {
+                    validParts.Add(new GeneratedPartItem(part.Title.Trim(), snappedPart.Value));
+                }
+            }
+
+            validParts = validParts.OrderBy(p => p.StartOffsetMs).Take(12).ToList();
+        }
+
         // Audit fix (M2): the summary is grounded too — it must cite at least one [mm:ss]
         // timestamp that ties it back to the transcript, or it is replaced by a grounded
         // default. An uncited summary would ship unverifiable claims under the Levvy name.
@@ -112,7 +133,7 @@ public static class GroundingVerifier
             summary = $"Lecture covered {ordered.Count} segments through {TimestampFormatter.FormatMmSs(ordered[^1].OffsetMs)}.";
         }
 
-        return new GeneratedStudyPackResult(summary, validCards);
+        return new GeneratedStudyPackResult(summary, validCards, validParts);
     }
 
     public static long? SnapToTranscriptOffset(long candidateOffsetMs, IReadOnlyList<TranscriptSegment> orderedTranscript)
@@ -194,3 +215,4 @@ public static class GroundingVerifier
         return trimmed.Trim();
     }
 }
+

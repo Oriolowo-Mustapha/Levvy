@@ -170,13 +170,17 @@ public sealed class LectureSessionHub(
             return;
         }
 
-        if (segments.Count == 0)
+        // Sentence-complete captions: fragments that end mid-sentence are held
+        // and joined with the next chunk before they reach viewers or storage.
+        var broadcastable = room.PrepareForBroadcast(segments);
+
+        if (broadcastable.Count == 0)
         {
             await BroadcastToHostsAsync(room, new { type = "asr_status", state = "ready" }, ct);
             return;
         }
 
-        foreach (var seg in segments)
+        foreach (var seg in broadcastable)
         {
             seg.SessionId = room.SessionId;
             await BroadcastSegmentInternalAsync(room, seg, translator, mediator, ct);
@@ -288,6 +292,16 @@ public sealed class LectureSessionHub(
     {
         if (!_rooms.TryGetValue(sessionId, out var room))
             return;
+
+        // Flush any caption tail still waiting for a next chunk, so the final
+        // sentence is broadcast and persisted before the ended banner lands.
+        var tail = room.TakePendingTail();
+        if (tail is not null)
+        {
+            using var flushScope = scopeFactory.CreateScope();
+            var translator = flushScope.ServiceProvider.GetRequiredService<ITranslator>();
+            await BroadcastSegmentInternalAsync(room, tail, translator, flushScope.ServiceProvider.GetRequiredService<IMediator>(), ct);
+        }
 
         await BroadcastJsonAsync(room, new { type = "session_ended" }, ct);
     }

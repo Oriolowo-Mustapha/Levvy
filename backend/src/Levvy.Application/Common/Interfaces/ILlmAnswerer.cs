@@ -19,4 +19,8 @@ public interface ILlmAnswerer
 }
 
 public sealed record GeneratedFlashcardItem(string Front, string Back, long SourceOffsetMs);
-public sealed record GeneratedStudyPackResult(string Summary, IReadOnlyList<GeneratedFlashcardItem> Flashcards);
+public sealed record GeneratedPartItem(string Title, long StartOffsetMs);
+public sealed record GeneratedStudyPackResult(
+    string Summary,
+    IReadOnlyList<GeneratedFlashcardItem> Flashcards,
+    IReadOnlyList<GeneratedPartItem> Parts);

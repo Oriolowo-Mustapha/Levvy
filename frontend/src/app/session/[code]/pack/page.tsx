@@ -193,6 +193,7 @@ export default function StudyPackPage({
               lines={pack.transcript}
               onPlay={onPlay}
               active={active}
+              parts={pack.parts}
             />
           </>
         )}

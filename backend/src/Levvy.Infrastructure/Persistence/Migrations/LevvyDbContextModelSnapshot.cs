@@ -229,6 +229,32 @@ namespace Levvy.Infrastructure.Persistence.Migrations
                     b.ToTable("StudyPacks");
                 });
 
+            modelBuilder.Entity("Levvy.Domain.Entities.StudyPackPart", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Ordinal")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("StartOffsetMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("StudyPackId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StudyPackId", "Ordinal");
+
+                    b.ToTable("StudyPackPart");
+                });
+
             modelBuilder.Entity("Levvy.Domain.Entities.TranscriptSegment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -383,6 +409,15 @@ namespace Levvy.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Levvy.Domain.Entities.StudyPackPart", b =>
+                {
+                    b.HasOne("Levvy.Domain.Entities.StudyPack", null)
+                        .WithMany("Parts")
+                        .HasForeignKey("StudyPackId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Levvy.Domain.Entities.TranscriptSegment", b =>
                 {
                     b.HasOne("Levvy.Domain.Entities.Session", null)
@@ -416,6 +451,8 @@ namespace Levvy.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Levvy.Domain.Entities.StudyPack", b =>
                 {
                     b.Navigation("Flashcards");
+
+                    b.Navigation("Parts");
                 });
 #pragma warning restore 612, 618
         }

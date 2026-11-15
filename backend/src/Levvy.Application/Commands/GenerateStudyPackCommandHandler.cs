@@ -32,6 +32,14 @@ public sealed class GenerateStudyPackCommandHandler(ISessionRepository repo, ILl
                 Front = f.Front,
                 Back = f.Back,
                 SourceOffsetMs = f.SourceOffsetMs
+            }).ToList(),
+            Parts = generated.Parts.Select((p, idx) => new StudyPackPart
+            {
+                Id = Guid.NewGuid(),
+                StudyPackId = packId,
+                Title = p.Title,
+                StartOffsetMs = p.StartOffsetMs,
+                Ordinal = idx + 1
             }).ToList()
         };
 

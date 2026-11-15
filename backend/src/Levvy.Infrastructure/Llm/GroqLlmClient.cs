@@ -111,7 +111,8 @@ public class GroqLlmClient : ITranslator, ILlmAnswerer
         {
             return new GeneratedStudyPackResult(
                 "No lecture transcript segments were recorded for this session.",
-                Array.Empty<GeneratedFlashcardItem>());
+                Array.Empty<GeneratedFlashcardItem>(),
+                Array.Empty<GeneratedPartItem>());
         }
 
         var ordered = transcript.OrderBy(s => s.OffsetMs).ToList();
@@ -125,8 +126,15 @@ public class GroqLlmClient : ITranslator, ILlmAnswerer
             "  \"summary\": \"Clear bulleted summary where each bullet includes its [mm:ss] timestamp citation\",\n" +
             "  \"flashcards\": [\n" +
             "    { \"front\": \"Question\", \"back\": \"Grounded answer\", \"sourceOffsetMs\": 2507000 }\n" +
+            "  ],\n" +
+            "  \"parts\": [\n" +
+            "    { \"title\": \"Short topic name (2-5 words)\", \"startOffsetMs\": 0 }\n" +
             "  ]\n" +
-            "}";
+            "}\n" +
+            "The \"parts\" array divides the lecture into topic chapters for navigation: " +
+            "3-8 parts for a full lecture (omit the array if the transcript is very short, under ~10 segments). " +
+            "Each part must start at an EXACT [offsetMs] value taken from the transcript block. " +
+            "The first part must start at the first segment's offset; parts must be in lecture order with no repeats.";
 
         var rawJson = await CompleteWithFallbackAsync(
             systemPrompt,

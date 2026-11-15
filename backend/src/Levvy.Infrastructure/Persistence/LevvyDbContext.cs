@@ -39,6 +39,15 @@ public class LevvyDbContext : DbContext
             e.HasIndex(x => new { x.SessionId, x.OffsetMs });
         });
         b.Entity<Answer>(e => e.HasMany(x => x.Citations).WithOne().HasForeignKey("AnswerId"));
-        b.Entity<StudyPack>(e => e.HasMany(x => x.Flashcards).WithOne().HasForeignKey("StudyPackId"));
+        b.Entity<StudyPack>(e =>
+        {
+            e.HasMany(x => x.Flashcards).WithOne().HasForeignKey("StudyPackId");
+            e.HasMany(x => x.Parts).WithOne().HasForeignKey("StudyPackId");
+        });
+        b.Entity<StudyPackPart>(e =>
+        {
+            // Chapter navigation is always ordered within a pack
+            e.HasIndex(x => new { x.StudyPackId, x.Ordinal });
+        });
     }
 }

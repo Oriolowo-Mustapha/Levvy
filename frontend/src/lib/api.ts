@@ -64,6 +64,13 @@ export interface FlashcardDto {
   sourceOffsetMs: number;
 }
 
+export interface StudyPackPartDto {
+  id: string;
+  title: string;
+  startOffsetMs: number;
+  ordinal: number;
+}
+
 export interface StudyPackResponse {
   sessionId: string;
   code: string;
@@ -71,6 +78,7 @@ export interface StudyPackResponse {
   summary: string;
   flashcards: FlashcardDto[];
   transcript: TranscriptLineDto[];
+  parts?: StudyPackPartDto[];
 }
 
 // --- Auth & User Dashboard DTOs ---

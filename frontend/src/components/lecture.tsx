@@ -12,6 +12,7 @@ import {
   formatMmSs,
   getSessionAudioUrl,
   type AskAnswerResponse,
+  type StudyPackPartDto,
   type TranscriptLineDto,
 } from "../lib/api";
 import {
@@ -164,18 +165,29 @@ export function TranscriptFeed({
   lines,
   onPlay,
   active,
+  parts,
   size = 18,
 }: {
   lines: TranscriptLineDto[];
   onPlay: (ms: number) => void;
   active: number | null;
+  /** Topic chapters from the study pack; headers render before their first line. */
+  parts?: StudyPackPartDto[];
   size?: number;
 }) {
+  // Map each chapter header to the offset it precedes, for O(n) interleaving.
+  const headerAt = new Map<number, StudyPackPartDto>();
+  for (const part of parts ?? []) {
+    if (!headerAt.has(part.startOffsetMs)) headerAt.set(part.startOffsetMs, part);
+  }
   return (
     <section className="transcript-feed" aria-label="Full lecture transcript">
       <div className="section-heading">
         <h2>Transcript</h2>
-        <span>{lines.length} segments</span>
+        <span>
+          {lines.length} segments
+          {headerAt.size > 0 ? ` · ${headerAt.size} parts` : ""}
+        </span>
       </div>
       {lines.length === 0 ? (
         <EmptyState title="Ready when your lecturer is">
@@ -184,21 +196,48 @@ export function TranscriptFeed({
         </EmptyState>
       ) : (
         <div className="transcript-list">
-          {lines.map((line) => (
-            <div
-              key={line.offsetMs}
-              className={`transcript-line ${line.offsetMs === active ? "active" : ""}`}
-            >
-              <AudioReceiptChip offsetMs={line.offsetMs} onPlay={onPlay} />
-              <p dir="auto" style={{ fontSize: size }}>
-                {line.text}
-              </p>
-            </div>
-          ))}
+          {lines.map((line) => {
+            const part = headerAt.get(line.offsetMs);
+            return (
+              <div key={line.offsetMs}>
+                {part && (
+                  <div
+                    className="transcript-part"
+                    role="heading"
+                    aria-level={3}
+                  >
+                    <span className="num">
+                      {String(headerIndex(parts ?? [], part)).padStart(2, "0")}
+                    </span>
+                    {part.title}
+                    <span className="transcript-part-ts num">
+                      {formatMmSs(part.startOffsetMs)}
+                    </span>
+                  </div>
+                )}
+                <div
+                  className={`transcript-line ${line.offsetMs === active ? "active" : ""}`}
+                >
+                  <AudioReceiptChip offsetMs={line.offsetMs} onPlay={onPlay} />
+                  <p dir="auto" style={{ fontSize: size }}>
+                    {line.text}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </section>
   );
+}
+
+/** 1-based ordinal of a part within the ordered parts list. */
+function headerIndex(parts: StudyPackPartDto[], part: StudyPackPartDto) {
+  return parts
+    .slice()
+    .sort((a, b) => a.startOffsetMs - b.startOffsetMs)
+    .findIndex((p) => p.startOffsetMs === part.startOffsetMs) + 1;
 }
 export function AudioPlaybackControl({
   code,
